@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alpha Vantage Stock Ticker Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 
+                  'Open Sans', 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
+      padding: 2rem;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    
+    p {
+      margin-bottom: 2rem;
+      text-align: center;
+      color: #555;
+    }
+    
+    /* Stock Ticker Styles */
+    .stock-ticker-container {
+      width: 100%;
+      background-color: #222;
+      margin: 1rem 0;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+    
+    .stock-ticker-wrapper {
+      padding: 0.5rem 0;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .stock-ticker {
+      white-space: nowrap;
+      display: inline-block;
+      animation: ticker-scroll 60s linear infinite;
+      padding-right: 50px; /* Space between end and restart */
+    }
+    
+    .stock-ticker:hover {
+      animation-play-state: paused;
+    }
+    
+    @keyframes ticker-scroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    
+    .stock-item {
+      display: inline-block;
+      margin-right: 20px;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 3px;
+      background-color: rgba(0, 0, 0, 0.3);
+    }
+    
+    .stock-symbol {
+      font-weight: bold;
+      margin-right: 0.5rem;
+      color: #e3e3e3;
+    }
+    
+    .stock-price {
+      margin-right: 0.5rem;
+      color: #fff;
+    }
+    
+    .stock-change {
+      font-weight: bold;
+    }
+    
+    .stock-change.positive {
+      color: #4caf50;
+    }
+    
+    .stock-change.negative {
+      color: #f44336;
+    }
+    
+    /* Console log display */
+    .console-container {
+      margin-top: 2rem;
+      padding: 1rem;
+      background: #f5f5f5;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .log-entry {
+      margin-bottom: 0.5rem;
+      font-family: monospace;
+      font-size: 0.9rem;
+    }
+    
+    .log-info { color: #333; }
+    .log-warn { color: #ff9800; }
+    .log-error { color: #f44336; }
+    
+    /* Controls */
+    .controls {
+      margin-top: 1rem;
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+    }
+    
+    button {
+      padding: 0.5rem 1rem;
+      background: #2196f3;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    
+    button:hover {
+      background: #1976d2;
+    }
+    
+    /* API key input */
+    .api-key-container {
+      margin: 1rem 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 1rem;
+    }
+    
+    input[type="text"] {
+      padding: 0.5rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      width: 300px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>Alpha Vantage Stock Ticker Demo</h1>
+  <p>Using Alpha Vantage API with Yahoo Finance as backup and CoinGecko for crypto</p>
+  
+  <div class="api-key-container">
+    <label for="api-key">Alpha Vantage API Key:</label>
+    <input type="text" id="api-key" placeholder="Enter your API key or leave as 'demo'">
+    <button id="apply-key-btn">Apply API Key</button>
+  </div>
+  
+  <div class="stock-ticker-container">
+    <div class="stock-ticker-wrapper">
+      <div class="stock-ticker" id="stock-ticker">
+        <!-- Stock data will be populated by JavaScript -->
+        <div class="stock-item">Loading stock data...</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="controls">
+    <button id="refresh-btn">Refresh Data Now</button>
+    <button id="toggle-fallback-btn">Toggle Fallback Mode</button>
+    <button id="clear-console-btn">Clear Console</button>
+  </div>
+  
+  <div class="console-container" id="console-log">
+    <div class="log-entry log-info">Console logs will appear here...</div>
+  </div>
+  
+  <script src="public/js/alpha-vantage-ticker.js"></script>
+  <script>
+    // Override console methods to display in the UI
+    const consoleLog = document.getElementById('console-log');
+    const originalConsole = {
+      log: console.log,
+      warn: console.warn,
+      error: console.error
+    };
+
+    console.log = function(message, ...args) {
+      originalConsole.log(message, ...args);
+      appendToConsole('info', message, args);
+    };
+    
+    console.warn = function(message, ...args) {
+      originalConsole.warn(message, ...args);
+      appendToConsole('warn', message, args);
+    };
+    
+    console.error = function(message, ...args) {
+      originalConsole.error(message, ...args);
+      appendToConsole('error', message, args);
+    };
+    
+    function appendToConsole(type, message, args) {
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      
+      let formattedMessage = String(message);
+      if (args.length > 0) {
+        try {
+          formattedMessage += ' ' + args.map(arg => 
+            typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+          ).join(' ');
+        } catch (e) {
+          formattedMessage += ' [Complex Object]';
+        }
+      }
+      
+      entry.textContent = formattedMessage;
+      consoleLog.appendChild(entry);
+      consoleLog.scrollTop = consoleLog.scrollHeight;
+    }
+    
+    // Add button event listeners
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+      const tickerElement = document.getElementById('stock-ticker');
+      fetchAllMarketData(tickerElement);
+    });
+    
+    document.getElementById('toggle-fallback-btn').addEventListener('click', function() {
+      const tickerElement = document.getElementById('stock-ticker');
+      usingFallbackMode = !usingFallbackMode;
+      console.log(`Fallback mode ${usingFallbackMode ? 'enabled' : 'disabled'}`);
+      
+      if (usingFallbackMode) {
+        updateWithRandomizedData(tickerElement);
+      } else {
+        fetchAllMarketData(tickerElement);
+      }
+    });
+    
+    document.getElementById('clear-console-btn').addEventListener('click', function() {
+      consoleLog.innerHTML = '';
+    });
+    
+    // API key handling
+    document.getElementById('apply-key-btn').addEventListener('click', function() {
+      const apiKeyInput = document.getElementById('api-key');
+      const newApiKey = apiKeyInput.value.trim() || 'demo';
+      
+      // Update the API key globally
+      window.ALPHA_VANTAGE_API_KEY = newApiKey;
+      
+      console.log(`API key updated to: ${newApiKey === 'demo' ? 'demo (limited requests)' : '****' + newApiKey.slice(-4)}`);
+      
+      // Refresh data with new key
+      const tickerElement = document.getElementById('stock-ticker');
+      fetchAllMarketData(tickerElement);
+    });
+  </script>
+</body>
+</html> 
