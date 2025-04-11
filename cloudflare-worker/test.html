@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resume File Uploader Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .test-form {
+      margin-bottom: 30px;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+    }
+    .form-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    label {
+      display: block;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    input[type="file"] {
+      margin-bottom: 15px;
+      display: block;
+      width: 100%;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    .result {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    .success {
+      background-color: #dff0d8;
+      color: #3c763d;
+      border: 1px solid #d6e9c6;
+    }
+    .error {
+      background-color: #f2dede;
+      color: #a94442;
+      border: 1px solid #ebccd1;
+    }
+    .loading {
+      text-align: center;
+      font-style: italic;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>Resume File Uploader Test</h1>
+  
+  <div class="test-form">
+    <div class="form-header">
+      <h2>Upload Resume (PDF)</h2>
+      <div class="endpoint-info">
+        Using: <code id="endpoint-url">https://resume-file-uploader.your-subdomain.workers.dev</code>
+        <button onclick="changeEndpoint()">Change</button>
+      </div>
+    </div>
+    <form id="resume-form">
+      <label for="resume-file">Select a PDF file:</label>
+      <input type="file" id="resume-file" accept=".pdf" required>
+      <button type="submit">Upload Resume</button>
+    </form>
+    <div id="resume-result" class="result"></div>
+  </div>
+
+  <div class="test-form">
+    <h2>Upload Evaluation (PDF)</h2>
+    <form id="eval-form">
+      <label for="eval-file">Select a PDF file:</label>
+      <input type="file" id="eval-file" accept=".pdf" required>
+      <button type="submit">Upload Evaluation</button>
+    </form>
+    <div id="eval-result" class="result"></div>
+  </div>
+
+  <div class="test-form">
+    <h2>Upload Photo (JPG/PNG)</h2>
+    <form id="photo-form">
+      <label for="photo-file">Select an image file:</label>
+      <input type="file" id="photo-file" accept="image/jpeg,image/png" required>
+      <button type="submit">Upload Photo</button>
+    </form>
+    <div id="photo-result" class="result"></div>
+  </div>
+
+  <script>
+    // Initial endpoint URL - should be updated after worker deployment
+    let endpointUrl = localStorage.getItem('workerEndpoint') || 'https://resume-file-uploader.your-subdomain.workers.dev';
+    document.getElementById('endpoint-url').textContent = endpointUrl;
+
+    // Function to change the endpoint URL
+    function changeEndpoint() {
+      const newEndpoint = prompt('Enter your Cloudflare Worker URL:', endpointUrl);
+      if (newEndpoint && newEndpoint.trim() !== '') {
+        endpointUrl = newEndpoint.trim();
+        localStorage.setItem('workerEndpoint', endpointUrl);
+        document.getElementById('endpoint-url').textContent = endpointUrl;
+      }
+    }
+
+    // Handle form submissions
+    ['resume', 'eval', 'photo'].forEach(type => {
+      const form = document.getElementById(`${type}-form`);
+      const resultDiv = document.getElementById(`${type}-result`);
+      
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById(`${type}-file`);
+        if (!fileInput.files.length) {
+          showResult(resultDiv, 'Please select a file first', 'error');
+          return;
+        }
+        
+        const file = fileInput.files[0];
+        
+        // Show loading state
+        showResult(resultDiv, 'Uploading...', 'loading');
+        
+        try {
+          // Create form data
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('type', type);
+          
+          // Send request to worker
+          const response = await fetch(endpointUrl, {
+            method: 'POST',
+            body: formData
+          });
+          
+          // Handle response
+          if (response.ok) {
+            const data = await response.json();
+            let successMessage = `File uploaded successfully!`;
+            
+            if (data.url) {
+              successMessage += ` <a href="${data.url}" target="_blank">View File</a>`;
+            }
+            
+            showResult(resultDiv, successMessage, 'success');
+          } else {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Upload failed');
+          }
+        } catch (error) {
+          showResult(resultDiv, `Error: ${error.message}`, 'error');
+        }
+      });
+    });
+    
+    // Helper function to show results
+    function showResult(element, message, type) {
+      element.innerHTML = message;
+      element.className = 'result ' + type;
+    }
+  </script>
+</body>
+</html> 
