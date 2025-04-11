@@ -6,6 +6,8 @@
 // Configuration
 const ALLOWED_ORIGINS = ['https://akashpatelresume.us', 'http://localhost:8000', 'http://localhost:3000'];
 const BUCKET_NAME = 'resume';
+// Update this URL to your public R2 bucket URL after setting up public access
+const PUBLIC_BUCKET_URL = 'https://assets.akashpatelresume.us';
 const MAX_SIZE = {
   resume: 5 * 1024 * 1024, // 5MB for resumes
   eval: 10 * 1024 * 1024,  // 10MB for evals
@@ -76,8 +78,8 @@ export default {
         },
       });
 
-      // Generate a URL for the uploaded file
-      const fileUrl = `https://assets.akashpatelresume.us/${filename}`;
+      // Generate a URL for the uploaded file using the public bucket URL
+      const fileUrl = `${PUBLIC_BUCKET_URL}/${filename}`;
 
       // Return success response
       return jsonResponse({
