@@ -10,13 +10,17 @@ const STOCK_SYMBOLS = [
 ];
 
 // YFinance backend configuration
-const BACKEND_URL = 'http://localhost:3000';
-const BACKEND_AVAILABLE = typeof window !== 'undefined' && 
-                         (window.location.hostname === 'localhost' || 
-                          window.location.hostname === '127.0.0.1');
+// Instead of hardcoding full URLs, use relative paths that work in both environments
+const API_PATH = '/api/yfinance';  // This will be proxied by your webserver in production
+const isLocalHost = typeof window !== 'undefined' && 
+                   (window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1');
+
+// Use localhost direct connection in development, but use the proxied API path in production
+const BACKEND_URL = isLocalHost ? 'http://localhost:3000' : API_PATH;
 
 // Track API state
-let usingFallbackMode = !BACKEND_AVAILABLE; // Start in fallback mode on production
+let usingFallbackMode = false;
 let apiFailureCount = 0;
 const MAX_FAILURES = 3;
 const REFRESH_INTERVAL = 120000; // 2 minutes
@@ -90,24 +94,31 @@ function getStaticStockData() {
  */
 async function fetchYFinanceData(tickerElement) {
   try {
-    console.log("Attempting to fetch data from YFinance backend...");
+    console.log(`Attempting to fetch data from YFinance backend at ${BACKEND_URL}...`);
+    
+    // Determine the correct health endpoint path
+    const healthEndpoint = isLocalHost ? `${BACKEND_URL}/health` : `${BACKEND_URL}/health`;
+    const quotesEndpoint = isLocalHost ? `${BACKEND_URL}/api/quotes` : `${BACKEND_URL}/quotes`;
+    
+    console.log(`Health check endpoint: ${healthEndpoint}`);
     
     // First check if backend is available with a health check
     const healthResponse = await Promise.race([
-      fetch(`${BACKEND_URL}/health`).then(response => response.ok),
+      fetch(healthEndpoint).then(response => response.ok),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
     ]).catch(() => false);
     
     if (!healthResponse) {
-      console.warn("YFinance backend not available, falling back to static data");
+      console.warn(`YFinance backend at ${healthEndpoint} not available, falling back to static data`);
       apiFailureCount++;
       checkFailureStatus(tickerElement);
       return;
     }
     
     // Fetch data from backend
+    console.log(`Fetching quotes from: ${quotesEndpoint}`);
     const response = await Promise.race([
-      fetch(`${BACKEND_URL}/api/quotes`),
+      fetch(quotesEndpoint),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
     ]);
     
@@ -118,7 +129,7 @@ async function fetchYFinanceData(tickerElement) {
     const data = await response.json();
     
     if (Array.isArray(data) && data.length > 0) {
-      console.log("Successfully fetched market data from YFinance backend");
+      console.log(`Successfully fetched market data from YFinance backend`);
       
       // Process data to match our format
       const processedData = data.map(item => {
@@ -136,6 +147,9 @@ async function fetchYFinanceData(tickerElement) {
         };
       });
       
+      // Add a data source indicator to the console (but don't affect the ticker itself)
+      console.info(`Stock ticker using live data from backend`);
+      
       // Render the data
       renderTicker(tickerElement, processedData);
       
@@ -148,7 +162,7 @@ async function fetchYFinanceData(tickerElement) {
       checkFailureStatus(tickerElement);
     }
   } catch (error) {
-    console.error("Error fetching from YFinance backend:", error);
+    console.error(`Error fetching from YFinance backend:`, error);
     apiFailureCount++;
     checkFailureStatus(tickerElement);
   }
