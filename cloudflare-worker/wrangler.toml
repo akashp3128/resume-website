@@ -1,0 +1,14 @@
+name = "resume-file-uploader"
+main = "index.js"
+compatibility_date = "2023-06-28"
+
+[[r2_buckets]]
+binding = "RESUME_BUCKET"
+bucket_name = "resume"
+preview_bucket_name = "resume-dev"
+
+[triggers]
+crons = []
+
+[vars]
+# Environment variables 
