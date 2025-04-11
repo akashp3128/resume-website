@@ -12,16 +12,16 @@ from datetime import datetime
 # Configuration
 PORT = 8001
 UPLOAD_DIR = '../uploads'  # Store uploads in the root directory
-ALLOWED_ORIGINS = ['http://localhost:8000', 'http://localhost:3000', 'http://127.0.0.1:8000']
+ALLOWED_ORIGINS = ['http://localhost:8000', 'http://localhost:3000', 'http://127.0.0.1:8000', 'https://akashpatelresume.us']
 MAX_SIZES = {
-    'resume': 5 * 1024 * 1024,  # 5MB for resumes
-    'eval': 10 * 1024 * 1024,   # 10MB for evals
-    'photo': 5 * 1024 * 1024    # 5MB for photos
+    'resume': 10 * 1024 * 1024,  # 10MB for resumes (increased from 5MB)
+    'eval': 20 * 1024 * 1024,    # 20MB for evals (increased from 10MB)
+    'photo': 10 * 1024 * 1024    # 10MB for photos (increased from 5MB)
 }
 ALLOWED_FILE_TYPES = {
     'resume': ['application/pdf'],
     'eval': ['application/pdf'],
-    'photo': ['image/jpeg', 'image/png', 'text/plain']  # Added text/plain for testing
+    'photo': ['image/jpeg', 'image/jpg', 'image/png', 'text/plain']  # Added image/jpg as some browsers report JPEGs as image/jpg
 }
 
 print(f"Starting upload server on port {PORT}")

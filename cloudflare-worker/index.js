@@ -4,17 +4,22 @@
  */
 
 // Configuration
-const ALLOWED_ORIGINS = ['https://akashpatelresume.us', 'http://localhost:8000', 'http://localhost:3000'];
+const ALLOWED_ORIGINS = [
+  'https://akashpatelresume.us',
+  'http://akashpatelresume.us', 
+  'http://localhost:8000', 
+  'http://localhost:3000'
+];
 const BUCKET_NAME = 'resume';
 const MAX_SIZE = {
-  resume: 5 * 1024 * 1024, // 5MB for resumes
-  eval: 10 * 1024 * 1024,  // 10MB for evals
-  photo: 5 * 1024 * 1024   // 5MB for photos
+  resume: 10 * 1024 * 1024, // 10MB for resumes (increased from 5MB)
+  eval: 20 * 1024 * 1024,   // 20MB for evals (increased from 10MB)
+  photo: 10 * 1024 * 1024   // 10MB for photos (increased from 5MB)
 };
 const ALLOWED_FILE_TYPES = {
   resume: ['application/pdf'],
   eval: ['application/pdf'],
-  photo: ['image/jpeg', 'image/png']
+  photo: ['image/jpeg', 'image/jpg', 'image/png'] // Added image/jpg for JPEG support
 };
 
 export default {
