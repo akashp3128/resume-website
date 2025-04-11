@@ -22,7 +22,7 @@ const MAX_SIZE = {
 };
 const ALLOWED_FILE_TYPES = {
   resume: ['application/pdf'],
-  eval: ['application/pdf'],
+  eval: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'], // Added image types for evals
   photo: ['image/jpeg', 'image/jpg', 'image/png'] // Added image/jpg for JPEG support
 };
 
@@ -84,8 +84,16 @@ export default {
           'Cache-Control': 'public, max-age=31536000',
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
-          'Access-Control-Max-Age': '86400'
+          'Access-Control-Max-Age': '86400',
+          'X-Frame-Options': 'SAMEORIGIN' // Allow content to be displayed in iframes on the same origin
         };
+        
+        // Add Content-Security-Policy header for PDFs to allow embedding
+        if (contentType === 'application/pdf') {
+          headers['Content-Security-Policy'] = "default-src 'self'; frame-ancestors 'self' https://akashpatelresume.us http://akashpatelresume.us https://localhost:* http://localhost:*";
+          // Allow PDF.js to work properly for PDF viewing in frames
+          headers['X-Content-Type-Options'] = 'nosniff';
+        }
         
         // For HEAD requests, just return the headers without the body
         if (method === 'HEAD') {
@@ -148,7 +156,11 @@ export default {
       }
 
       // Validate content type
-      if (!ALLOWED_FILE_TYPES[type].includes(file.type)) {
+      if (!ALLOWED_FILE_TYPES[type].includes(file.type) && 
+          // Special case for JPEGs that might be reported with different MIME types
+          !(type === 'eval' && 
+            (file.type === 'image/jpeg' || file.type === 'image/jpg' || 
+            file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.jpeg')))) {
         console.error(`Invalid file type: ${file.type} for type ${type}. Allowed types: ${ALLOWED_FILE_TYPES[type].join(', ')}`);
         return jsonResponse({ 
           error: `Invalid file type: ${file.type}. Allowed types: ${ALLOWED_FILE_TYPES[type].join(', ')}` 

@@ -50,11 +50,17 @@ except Exception as e:
 def detect_file_type(filename, provided_type=None):
     # First check the provided type if available
     if provided_type and provided_type != 'application/octet-stream':
+        # Special handling for JPEG files with inconsistent MIME types
+        if provided_type in ['image/jpg', 'image/jpeg']:
+            return 'image/jpeg'  # Normalize JPEG MIME types
         return provided_type
         
     # Try to determine from file extension
     file_type, encoding = mimetypes.guess_type(filename)
     if file_type:
+        # Also normalize JPEG MIME types from extensions
+        if file_type in ['image/jpg', 'image/jpeg']:
+            return 'image/jpeg'
         return file_type
         
     # Default fallbacks based on extension
@@ -280,8 +286,17 @@ class UploadHandler(http.server.BaseHTTPRequestHandler):
             if file_type == 'eval' or file_type == 'photo':
                 # For images, check file extension as well
                 file_ext = os.path.splitext(file_item['filename'].lower())[1]
-                if file_ext in ['.jpg', '.jpeg', '.png'] or file_item['type'] in ALLOWED_FILE_TYPES[file_type]:
+                content_type = file_item['type'].lower()
+                
+                # More permissive check for JPEG files which can have inconsistent MIME types
+                if file_ext in ['.jpg', '.jpeg'] or content_type in ['image/jpeg', 'image/jpg'] or \
+                   file_ext == '.png' or content_type == 'image/png' or \
+                   (file_type == 'eval' and file_ext == '.pdf') or \
+                   content_type in ALLOWED_FILE_TYPES[file_type]:
                     is_valid_type = True
+                    # Normalize JPEG MIME type for consistent handling
+                    if file_ext in ['.jpg', '.jpeg'] or content_type in ['image/jpeg', 'image/jpg']:
+                        file_item['type'] = 'image/jpeg'
             else:
                 # For PDFs, rely on the detected content type
                 if file_item['type'] in ALLOWED_FILE_TYPES[file_type]:

@@ -799,12 +799,24 @@
       }
     }
 
-    .pdf-viewer {
+    .pdf-viewer-wrapper {
       width: 100%;
       height: 600px;
       border: 1px solid #ddd;
       border-radius: 4px;
       margin: 1rem 0;
+      overflow: hidden;
+    }
+    
+    .pdf-viewer {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    
+    .pdf-viewer object {
+      width: 100%;
+      height: 100%;
     }
     
     .resume-preview-container {
@@ -832,7 +844,7 @@
     }
     
     @media (max-width: 768px) {
-      .pdf-viewer {
+      .pdf-viewer-wrapper {
         height: 400px;
       }
     }
@@ -1633,6 +1645,7 @@
       downloadLink.className = 'resume-download-link';
       downloadLink.textContent = 'Download Resume';
       downloadLink.target = '_blank';
+      downloadLink.setAttribute('rel', 'noopener');
       actionsDiv.appendChild(downloadLink);
       
       // Add filename display
@@ -1647,6 +1660,9 @@
       // Create PDF viewer with error handling
       const pdfViewer = document.createElement('iframe');
       pdfViewer.className = 'pdf-viewer';
+      
+      // Add sandbox attribute with necessary permissions for PDF viewing
+      pdfViewer.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms');
       
       // Add load and error event handlers
       pdfViewer.addEventListener('load', function() {
@@ -1680,17 +1696,44 @@
         iframeSrc = iframeSrc.replace('https://', 'http://');
       }
       
+      // Add object fallback for browsers with iframe PDF issues
+      const objectFallback = document.createElement('object');
+      objectFallback.data = iframeSrc;
+      objectFallback.type = 'application/pdf';
+      objectFallback.width = '100%';
+      objectFallback.height = '100%';
+      objectFallback.innerHTML = `
+        <p>It appears your browser doesn't support embedded PDFs. 
+        <a href="${iframeSrc}" target="_blank">Click here to download the PDF</a>.</p>
+      `;
+      
       // Set the source last to make sure handlers are in place
       pdfViewer.src = iframeSrc;
       pdfViewer.title = 'Resume PDF';
       pdfViewer.setAttribute('frameborder', '0');
       pdfViewer.setAttribute('loading', 'lazy');
       
-      previewContainer.appendChild(pdfViewer);
+      // Use a wrapper to implement fallback
+      const viewerWrapper = document.createElement('div');
+      viewerWrapper.className = 'pdf-viewer-wrapper';
+      viewerWrapper.style.width = '100%';
+      viewerWrapper.style.height = '600px';
+      viewerWrapper.appendChild(pdfViewer);
+      
+      previewContainer.appendChild(viewerWrapper);
       
       // Clear container and add new elements
       container.innerHTML = '';
       container.appendChild(previewContainer);
+      
+      // Try alternative embedding method if browser is likely to block iframes
+      setTimeout(() => {
+        if (!pdfViewer.contentDocument || pdfViewer.contentDocument.body.innerHTML === '') {
+          console.log('PDF iframe may be blocked, trying object fallback');
+          viewerWrapper.innerHTML = '';
+          viewerWrapper.appendChild(objectFallback);
+        }
+      }, 1000);
     }
     
     // Load previously uploaded files from localStorage
