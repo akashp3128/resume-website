@@ -1013,7 +1013,9 @@
 
   <script>
     // Configure upload endpoints
-    const UPLOAD_ENDPOINT = 'https://resume-file-uploader.akashpatelresume.us';
+    const PRIMARY_UPLOAD_ENDPOINT = 'https://resume-file-uploader.akashpatelresume.us';
+    const FALLBACK_UPLOAD_ENDPOINT = 'http://localhost:8001';
+    let UPLOAD_ENDPOINT = PRIMARY_UPLOAD_ENDPOINT;
     
     // Handle file uploads
     document.querySelectorAll('.upload-btn').forEach(button => {
@@ -1021,6 +1023,60 @@
         const input = this.previousElementSibling;
         const section = this.closest('section').id;
         let fileType;
+        
+        // Check if the upload service is available
+        try {
+          this.textContent = 'Checking service...';
+          this.disabled = true;
+          
+          // Try primary endpoint
+          try {
+            const statusCheck = await fetch(PRIMARY_UPLOAD_ENDPOINT, {
+              method: 'OPTIONS',
+              headers: {
+                'Origin': window.location.origin
+              }
+            });
+            
+            if (statusCheck.ok) {
+              UPLOAD_ENDPOINT = PRIMARY_UPLOAD_ENDPOINT;
+              console.log('Using primary upload endpoint');
+            } else {
+              throw new Error('Primary endpoint returned error');
+            }
+          } catch (error) {
+            console.warn('Primary upload endpoint unavailable:', error);
+            
+            // Try fallback endpoint
+            try {
+              const fallbackCheck = await fetch(FALLBACK_UPLOAD_ENDPOINT, {
+                method: 'OPTIONS',
+                headers: {
+                  'Origin': window.location.origin
+                }
+              });
+              
+              if (fallbackCheck.ok) {
+                UPLOAD_ENDPOINT = FALLBACK_UPLOAD_ENDPOINT;
+                console.log('Using fallback upload endpoint');
+              } else {
+                throw new Error('Fallback endpoint returned error');
+              }
+            } catch (fallbackError) {
+              console.error('Fallback upload endpoint also unavailable:', fallbackError);
+              throw new Error('All upload services unavailable');
+            }
+          }
+          
+          this.textContent = 'Upload';
+          this.disabled = false;
+        } catch (error) {
+          console.error('Service check failed:', error);
+          this.textContent = 'Upload';
+          this.disabled = false;
+          alert('Upload service is currently unavailable. Please try again later or contact support.');
+          return;
+        }
         
         // Determine file type based on section
         if (section === 'military') {
@@ -1098,7 +1154,12 @@
             this.disabled = false;
             
             console.error('Upload error:', error);
-            alert('Upload failed. Please try again later.');
+            const errorDetails = error.message || 'Unknown error';
+            alert(`Upload failed: ${errorDetails}. Please check the console for more details.`);
+            
+            // Log additional debugging information
+            console.log('File details:', file.name, file.type, file.size);
+            console.log('Upload endpoint:', UPLOAD_ENDPOINT);
           }
         } else {
           alert('Please select a file first');

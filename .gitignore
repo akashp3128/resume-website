@@ -7,6 +7,7 @@ out/
 
 # Mac files
 .DS_Store
+Thumbs.db
 
 # Environment variables
 .env
@@ -26,4 +27,11 @@ yarn-error.log*
 .idea/
 .vscode/
 *.swp
-*.swo 
+*.swo
+
+# Uploads directory (contains user uploads)
+uploads/
+
+# Temporary files
+*.tmp
+*.temp 
