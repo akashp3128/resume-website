@@ -19,6 +19,7 @@ const PRIMARY_ENDPOINTS = [
 ];
 const FALLBACK_ENDPOINT = 'http://localhost:8001';
 const ORIGIN = 'https://akashpatelresume.us'; // Simulate coming from your site
+const R2_PUBLIC_URL = 'https://pub-4370dc249c9e4ccc96ec4e03c63a3c4a.r2.dev';
 
 // Helper function to send an OPTIONS request
 function sendOptionsRequest(endpoint) {
@@ -183,6 +184,48 @@ function sendFileUpload(endpoint, filePath, overrideContentType = null) {
   });
 }
 
+// Helper function to validate a URL is accessible
+function testUrlAccess(url) {
+  return new Promise((resolve, reject) => {
+    console.log(`Testing URL access: ${url}`);
+    
+    const parsedUrl = new URL(url);
+    const options = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: 'HEAD'
+    };
+    
+    const req = (parsedUrl.protocol === 'https:' ? https : http).request(options, (res) => {
+      console.log(`URL STATUS: ${res.statusCode}`);
+      
+      if (res.statusCode >= 200 && res.statusCode < 400) {
+        resolve({
+          accessible: true,
+          statusCode: res.statusCode
+        });
+      } else {
+        resolve({
+          accessible: false,
+          statusCode: res.statusCode,
+          message: `Received status code ${res.statusCode}`
+        });
+      }
+    });
+    
+    req.on('error', (error) => {
+      console.error(`Error accessing URL ${url}: ${error.message}`);
+      resolve({
+        accessible: false,
+        message: error.message
+      });
+    });
+    
+    req.end();
+  });
+}
+
 // Main function to run the tests
 async function runTests() {
   console.log('Starting upload endpoint tests...');
@@ -245,8 +288,34 @@ async function runTests() {
     try {
       const imageFilePath = createTestFile('image');
       console.log(`Created test JPEG image at: ${imageFilePath}`);
-      await sendFileUpload(workingPrimaryEndpoint, imageFilePath, 'image/jpeg');
+      const uploadResponse = await sendFileUpload(workingPrimaryEndpoint, imageFilePath, 'image/jpeg');
       console.log('✅ JPEG upload test successful');
+      
+      // Check if we can extract the uploaded file URL from the response
+      try {
+        const jsonResponse = JSON.parse(uploadResponse.body);
+        if (jsonResponse.url && jsonResponse.success) {
+          console.log(`\n=== Testing R2 Bucket URL Access ===`);
+          console.log(`Uploaded file URL: ${jsonResponse.url}`);
+          
+          // Verify the URL contains the correct R2 bucket URL
+          if (jsonResponse.url.startsWith(R2_PUBLIC_URL)) {
+            console.log(`✅ URL correctly uses the R2 public bucket URL: ${R2_PUBLIC_URL}`);
+          } else {
+            console.log(`❌ URL does not use the expected R2 public bucket URL. Using: ${jsonResponse.url.split('/')[2]}`);
+          }
+          
+          // Try to access the URL
+          const urlAccess = await testUrlAccess(jsonResponse.url);
+          if (urlAccess.accessible) {
+            console.log(`✅ Uploaded file is publicly accessible!`);
+          } else {
+            console.log(`❌ Cannot access uploaded file: ${urlAccess.message}`);
+          }
+        }
+      } catch (error) {
+        console.log(`❌ Failed to parse upload response: ${error.message}`);
+      }
     } catch (error) {
       console.log(`❌ JPEG upload test failed: ${error.message}`);
     }

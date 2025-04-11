@@ -6,9 +6,9 @@ This is a Cloudflare Worker for handling file uploads to R2 storage for the resu
 
 This worker handles secure file uploads from the resume website to a Cloudflare R2 bucket. It supports:
 
-- Resume uploads (PDF)
-- Military evaluation uploads (PDF)
-- Profile photo uploads (JPEG/PNG)
+- Resume uploads (PDF) - up to 10MB
+- Military evaluation uploads (PDF) - up to 20MB
+- Profile photo uploads (JPEG/PNG) - up to 10MB
 
 The worker performs validation on file types, sizes, and origins before storing them in the R2 bucket.
 
@@ -18,8 +18,19 @@ The worker is configured using these key settings:
 
 - **Allowed Origins**: Only requests from these domains are accepted
 - **Bucket Name**: The R2 bucket where files are stored
+- **R2 Public URL**: `https://pub-4370dc249c9e4ccc96ec4e03c63a3c4a.r2.dev`
 - **File Size Limits**: Maximum allowed file sizes by type
 - **Allowed File Types**: Restricts uploads to specific file formats by type
+
+## Recent Updates
+
+- Increased file size limits:
+  - Resume: 10MB (up from 5MB)
+  - Evaluations: 20MB (up from 10MB)
+  - Photos: 10MB (up from 5MB)
+- Added support for both image/jpeg and image/jpg MIME types
+- Updated the R2 public bucket URL
+- Added HTTP domain support alongside HTTPS
 
 ## Deployment & Usage
 

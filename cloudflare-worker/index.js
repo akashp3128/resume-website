@@ -11,6 +11,7 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3000'
 ];
 const BUCKET_NAME = 'resume';
+const R2_PUBLIC_URL = 'https://pub-4370dc249c9e4ccc96ec4e03c63a3c4a.r2.dev';
 const MAX_SIZE = {
   resume: 10 * 1024 * 1024, // 10MB for resumes (increased from 5MB)
   eval: 20 * 1024 * 1024,   // 20MB for evals (increased from 10MB)
@@ -81,8 +82,8 @@ export default {
         },
       });
 
-      // Generate a URL for the uploaded file
-      const fileUrl = `https://pub-ec6a3fc3d2394a1caa15a60092c4e4cd.r2.dev/${filename}`;
+      // Generate a URL for the uploaded file using the correct public bucket URL
+      const fileUrl = `${R2_PUBLIC_URL}/${filename}`;
 
       // Return success response
       return jsonResponse({
