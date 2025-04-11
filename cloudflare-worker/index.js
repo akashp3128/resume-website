@@ -11,7 +11,8 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3000'
 ];
 const BUCKET_NAME = 'resume';
-const R2_PUBLIC_URL = 'https://pub-4370dc249c9e4ccc96ec4e03c63a3c4a.r2.dev';
+// We'll serve files directly from the worker instead of using the public bucket URL
+const WORKER_URL = 'https://resume-file-uploader.akashp3128.workers.dev';
 const MAX_SIZE = {
   resume: 10 * 1024 * 1024, // 10MB for resumes (increased from 5MB)
   eval: 20 * 1024 * 1024,   // 20MB for evals (increased from 10MB)
@@ -25,9 +26,52 @@ const ALLOWED_FILE_TYPES = {
 
 export default {
   async fetch(request, env, ctx) {
+    // Get the URL and pathname
+    const url = new URL(request.url);
+    const path = url.pathname;
+    
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
       return handleCORS(request);
+    }
+    
+    // Handle file serving for GET requests
+    if (request.method === 'GET' && path !== '/') {
+      // Remove the leading slash
+      const key = path.substring(1);
+      
+      try {
+        // Get the object from R2
+        const object = await env.RESUME_BUCKET.get(key);
+        
+        // If the object doesn't exist, return 404
+        if (object === null) {
+          return new Response('Not Found', { status: 404 });
+        }
+        
+        // Determine content type based on filename or use the stored metadata
+        let contentType = object.httpMetadata?.contentType || 'application/octet-stream';
+        if (key.endsWith('.pdf')) {
+          contentType = 'application/pdf';
+        } else if (key.endsWith('.jpg') || key.endsWith('.jpeg')) {
+          contentType = 'image/jpeg';
+        } else if (key.endsWith('.png')) {
+          contentType = 'image/png';
+        }
+        
+        // Return the file with proper headers
+        return new Response(object.body, {
+          headers: {
+            'Content-Type': contentType,
+            'Content-Length': object.size,
+            'Cache-Control': 'public, max-age=31536000',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      } catch (error) {
+        console.error('Error serving file:', error);
+        return new Response('Internal Server Error', { status: 500 });
+      }
     }
 
     // Only allow POST requests for uploads
@@ -82,8 +126,8 @@ export default {
         },
       });
 
-      // Generate a URL for the uploaded file using the correct public bucket URL
-      const fileUrl = `${R2_PUBLIC_URL}/${filename}`;
+      // Generate a URL for the uploaded file using the worker URL instead of the public R2 URL
+      const fileUrl = `${WORKER_URL}/${filename}`;
 
       // Return success response
       return jsonResponse({
@@ -115,7 +159,7 @@ function handleCORS(request) {
   return new Response(null, {
     headers: {
       'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Max-Age': '86400',
     }
@@ -129,7 +173,7 @@ function jsonResponse(data, status = 200, origin) {
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     }
   });
 } 
