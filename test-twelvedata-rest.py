@@ -5,11 +5,15 @@ import os
 from datetime import datetime, timedelta
 
 # Replace with your actual API key or get from environment variable
-API_KEY = os.environ.get("TWELVEDATA_API_KEY", "")
+API_KEY = os.environ.get("TWELVEDATA_API_KEY", "demo")
 
-# If no API key is provided, prompt the user
-if not API_KEY:
-    API_KEY = input("Enter your Twelvedata API key: ")
+# If no API key is provided, prompt the user only if demo key is not acceptable
+if API_KEY == "demo":
+    use_demo = input("Use demo API key? (y/n, default: y): ").lower()
+    if use_demo != "n":
+        print("Using demo API key with limited functionality")
+    else:
+        API_KEY = input("Enter your Twelvedata API key: ")
 
 def get_time_series(symbol="SPY", interval="1day", start_date=None, end_date=None):
     """
