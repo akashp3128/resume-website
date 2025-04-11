@@ -1,6 +1,6 @@
 /**
  * Isolated Stock Ticker Implementation
- * Uses YFinance backend when available, with fallback to static data
+ * Uses MongoDB-backed YFinance backend for live prices, with fallback to static data
  */
 
 // Configuration - requested stock symbols
@@ -30,7 +30,7 @@ const DEV_REFRESH_INTERVAL = 30000; // 30 seconds for development
  * Initialize the stock ticker
  */
 function initStockTicker() {
-  console.log("Initializing isolated stock ticker...");
+  console.log("Initializing isolated stock ticker with MongoDB backend...");
   
   // Get reference to DOM element
   const tickerElement = document.getElementById('stock-ticker');
@@ -94,7 +94,7 @@ function getStaticStockData() {
  */
 async function fetchYFinanceData(tickerElement) {
   try {
-    console.log(`Attempting to fetch data from YFinance backend at ${BACKEND_URL}...`);
+    console.log(`Attempting to fetch data from MongoDB-backed YFinance backend at ${BACKEND_URL}...`);
     
     // Determine the correct health endpoint path
     const healthEndpoint = isLocalHost ? `${BACKEND_URL}/health` : `${BACKEND_URL}/health`;
@@ -129,7 +129,7 @@ async function fetchYFinanceData(tickerElement) {
     const data = await response.json();
     
     if (Array.isArray(data) && data.length > 0) {
-      console.log(`Successfully fetched market data from YFinance backend`);
+      console.log(`Successfully fetched market data from MongoDB-backed YFinance backend`);
       
       // Process data to match our format
       const processedData = data.map(item => {
@@ -148,7 +148,7 @@ async function fetchYFinanceData(tickerElement) {
       });
       
       // Add a data source indicator to the console (but don't affect the ticker itself)
-      console.info(`Stock ticker using live data from backend`);
+      console.info(`Stock ticker using live data from MongoDB backend`);
       
       // Render the data
       renderTicker(tickerElement, processedData);
