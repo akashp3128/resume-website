@@ -719,10 +719,16 @@
     section {
       margin-bottom: var(--spacing-lg);
       padding: var(--spacing-md);
-      opacity: 1; /* Always visible */
-      transform: translateY(0);
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.8s ease, transform 0.8s ease;
     }
     
+    section.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
     .contact-info {
       margin-top: 1.5rem;
       text-align: center;
@@ -1200,39 +1206,6 @@
         </div>
       </section>
       
-      <section id="deployment-guide" style="margin-top: 2rem; background-color: #f8f5f2; padding: 1.5rem; border-radius: 5px; border-left: 3px solid var(--accent-color);">
-        <h2>Cloudflare Worker Deployment Guide</h2>
-        <div class="card">
-          <h3>Setup Instructions</h3>
-          <ol style="padding-left: 1.5rem; line-height: 1.8;">
-            <li>Install Wrangler (Cloudflare CLI):
-              <pre style="background-color: #f1f1f1; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto;">npm install -g wrangler</pre>
-            </li>
-            <li>Log in to your Cloudflare account:
-              <pre style="background-color: #f1f1f1; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto;">wrangler login</pre>
-            </li>
-            <li>Navigate to the worker directory and deploy:
-              <pre style="background-color: #f1f1f1; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto;">cd cloudflare-worker
-wrangler deploy</pre>
-            </li>
-            <li>Set up Public Access for your R2 bucket:
-              <ul style="margin-top: 0.5rem; list-style-type: disc; padding-left: 1.5rem;">
-                <li>Go to Cloudflare dashboard → R2</li>
-                <li>Select your "resume" bucket</li>
-                <li>Go to Settings → Public Access</li>
-                <li>Enable public access and set up a custom domain (e.g., assets.akashpatelresume.us)</li>
-              </ul>
-            </li>
-          </ol>
-          <p><strong>Note:</strong> Files are stored in your R2 bucket with organized paths:</p>
-          <ul style="list-style-type: none; padding-left: 1rem; margin-top: 0.5rem;">
-            <li><code>resume/2023-04-11T12-34-56-789Z-filename.pdf</code> - Resume files</li>
-            <li><code>eval/2023-04-11T12-34-56-789Z-document.pdf</code> - Evaluation documents</li>
-            <li><code>photo/2023-04-11T12-34-56-789Z-image.jpg</code> - Photos</li>
-          </ul>
-        </div>
-      </section>
-      
       <section id="contact">
         <h2>Contact Me</h2>
         <div class="card">
@@ -1323,6 +1296,27 @@ wrangler deploy</pre>
       const logoutBtn = document.getElementById('logout-btn');
       const editButtons = document.querySelectorAll('.edit-button');
       const adminLoginTrigger = document.getElementById('admin-login-trigger');
+      
+      // Implement scroll animations
+      const observerOptions = {
+        root: null,
+        rootMargin: '0px',
+        threshold: 0.1
+      };
+      
+      const observer = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target); // Stop observing once animation is triggered
+          }
+        });
+      }, observerOptions);
+      
+      // Observe all sections
+      document.querySelectorAll('section').forEach(section => {
+        observer.observe(section);
+      });
       
       // Check if user is already logged in
       const isLoggedIn = localStorage.getItem('adminLoggedIn') === 'true';
@@ -1431,9 +1425,7 @@ wrangler deploy</pre>
     // File upload functionality
     document.addEventListener('DOMContentLoaded', function() {
       // Direct Upload endpoint URL - your Cloudflare Worker endpoint
-      // After deployment, replace this with your actual worker URL from Cloudflare dashboard
-      // e.g., https://resume-file-uploader.your-account-name.workers.dev
-      const UPLOAD_ENDPOINT = 'https://resume-file-uploader.akashpatelresume.workers.dev';
+      const UPLOAD_ENDPOINT = 'https://resume-file-uploader.akashp3128.workers.dev';
       
       // Handler for file input changes (shows preview)
       ['resume-file', 'eval-file', 'photo-file'].forEach(inputId => {
