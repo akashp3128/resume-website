@@ -719,9 +719,14 @@
     section {
       margin-bottom: var(--spacing-lg);
       padding: var(--spacing-md);
+      opacity: 1; /* Default to visible instead of hidden */
+      transform: translateY(0); /* Default to no transform */
+      transition: opacity 0.8s ease, transform 0.8s ease;
+    }
+    
+    section.animate-in {
       opacity: 0;
       transform: translateY(20px);
-      transition: opacity 0.8s ease, transform 0.8s ease;
     }
     
     section.visible {
@@ -1316,8 +1321,17 @@ wrangler deploy</pre>
         themeBtn.setAttribute('aria-label', 'Switch to light mode');
       }
       
+      // Fix any sections that might be hidden
+      document.querySelectorAll('section').forEach(section => {
+        // Ensure all sections are visible initially
+        section.style.opacity = '1';
+        section.style.transform = 'translateY(0)';
+      });
+      
       // Admin login setup
       setupAdminFunctionality();
+
+      // File upload functionality setup (already handled by another event listener)
     });
     
     // Admin functionality
@@ -1330,26 +1344,8 @@ wrangler deploy</pre>
       const editButtons = document.querySelectorAll('.edit-button');
       const adminLoginTrigger = document.getElementById('admin-login-trigger');
       
-      // Implement scroll animations
-      const observerOptions = {
-        root: null,
-        rootMargin: '0px',
-        threshold: 0.1
-      };
-      
-      const observer = new IntersectionObserver((entries, observer) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-            observer.unobserve(entry.target); // Stop observing once animation is triggered
-          }
-        });
-      }, observerOptions);
-      
-      // Observe all sections
-      document.querySelectorAll('section').forEach(section => {
-        observer.observe(section);
-      });
+      // Initialize the section animations
+      initSectionAnimations();
       
       // Check if user is already logged in
       const isLoggedIn = localStorage.getItem('adminLoggedIn') === 'true';
@@ -1455,6 +1451,54 @@ wrangler deploy</pre>
       });
     }
 
+    // Function to initialize section animations
+    function initSectionAnimations() {
+      // Implement scroll animations with a fallback mechanism
+      const observerOptions = {
+        root: null,
+        rootMargin: '0px',
+        threshold: 0.1
+      };
+      
+      // Function to ensure sections are visible even if observer fails
+      function ensureSectionsVisible() {
+        document.querySelectorAll('section').forEach(section => {
+          section.classList.add('visible');
+          section.style.opacity = '1';
+          section.style.transform = 'translateY(0)';
+        });
+      }
+      
+      // Set a fallback timer to make sections visible
+      const fallbackTimer = setTimeout(ensureSectionsVisible, 1000);
+      
+      // Set up the observer
+      if ('IntersectionObserver' in window) {
+        try {
+          const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target); // Stop observing once animation is triggered
+              }
+            });
+          }, observerOptions);
+          
+          // Mark sections for animation and observe them
+          document.querySelectorAll('section').forEach(section => {
+            section.classList.add('animate-in');
+            observer.observe(section);
+          });
+        } catch (error) {
+          console.error('Error setting up IntersectionObserver:', error);
+          ensureSectionsVisible();
+        }
+      } else {
+        // Fallback for browsers that don't support IntersectionObserver
+        ensureSectionsVisible();
+      }
+    }
+
     // File upload functionality
     document.addEventListener('DOMContentLoaded', function() {
       // Direct Upload endpoint URL - your Cloudflare Worker endpoint
@@ -1552,6 +1596,67 @@ wrangler deploy</pre>
           }
         });
       });
+    });
+  </script>
+  
+  <!-- Debug helper script -->
+  <script>
+    // Debug function to check for hidden sections
+    function checkSectionVisibility() {
+      console.log('Checking section visibility...');
+      const sections = document.querySelectorAll('section');
+      
+      sections.forEach((section, index) => {
+        const id = section.id || `section-${index}`;
+        const style = window.getComputedStyle(section);
+        const opacity = parseFloat(style.opacity);
+        const transform = style.transform;
+        const display = style.display;
+        const visibility = style.visibility;
+        
+        console.log(`Section ${id}: opacity=${opacity}, transform=${transform}, display=${display}, visibility=${visibility}`);
+        
+        if (opacity < 0.1 || display === 'none' || visibility === 'hidden') {
+          console.warn(`Section ${id} may be hidden! Fixing...`);
+          section.style.opacity = '1';
+          section.style.display = 'block';
+          section.style.visibility = 'visible';
+          section.style.transform = 'translateY(0)';
+        }
+      });
+    }
+    
+    // Run visibility check after a delay
+    setTimeout(checkSectionVisibility, 1500);
+    
+    // Add debug button
+    window.addEventListener('load', function() {
+      const debugBtn = document.createElement('button');
+      debugBtn.textContent = 'Debug Sections';
+      debugBtn.style.position = 'fixed';
+      debugBtn.style.bottom = '10px';
+      debugBtn.style.right = '10px';
+      debugBtn.style.zIndex = '9999';
+      debugBtn.style.padding = '8px 12px';
+      debugBtn.style.backgroundColor = '#ff0000';
+      debugBtn.style.color = '#ffffff';
+      debugBtn.style.border = 'none';
+      debugBtn.style.borderRadius = '4px';
+      debugBtn.style.cursor = 'pointer';
+      
+      debugBtn.addEventListener('click', function() {
+        checkSectionVisibility();
+        // Force all sections to be visible
+        document.querySelectorAll('section').forEach(section => {
+          section.style.opacity = '1';
+          section.style.display = 'block';
+          section.style.visibility = 'visible';
+          section.style.transform = 'translateY(0)';
+        });
+        alert('All sections should now be visible. Check the console for details.');
+      });
+      
+      document.body.appendChild(debugBtn);
     });
   </script>
 </body>
