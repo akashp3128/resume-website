@@ -1,75 +1,102 @@
-# Resume File Uploader - Cloudflare Worker
+# Resume Website Cloudflare Worker
 
-This Cloudflare Worker handles file uploads from your resume website to your Cloudflare R2 bucket.
+This is a Cloudflare Worker for handling file uploads to R2 storage for the resume website at akashpatelresume.us.
 
-## Prerequisites
+## Overview
 
-1. A Cloudflare account with Workers and R2 enabled
-2. Cloudflare CLI (Wrangler) installed
-3. An R2 bucket named "resume" created in your Cloudflare account
+This worker handles secure file uploads from the resume website to a Cloudflare R2 bucket. It supports:
 
-## Setup and Deployment
+- Resume uploads (PDF)
+- Military evaluation uploads (PDF)
+- Profile photo uploads (JPEG/PNG)
 
-1. Install Wrangler CLI if you haven't already:
-   ```bash
-   npm install -g wrangler
-   ```
-
-2. Login to your Cloudflare account:
-   ```bash
-   wrangler login
-   ```
-
-3. Create your R2 bucket if you haven't already:
-   ```bash
-   wrangler r2 bucket create resume
-   ```
-
-4. Deploy the worker:
-   ```bash
-   cd cloudflare-worker
-   wrangler deploy
-   ```
-
-5. Set up a custom domain for your worker (optional):
-   - Go to your Cloudflare Workers dashboard
-   - Navigate to your worker
-   - Click on "Triggers" and then "Custom Domains"
-   - Add a custom domain like `api.akashpatelresume.us`
-
-## How It Works
-
-The worker:
-1. Receives file uploads (PDF for resumes and evaluations, images for photos)
-2. Validates file types, sizes, and request origin
-3. Stores files in your R2 bucket with organized paths
-4. Returns a URL to the uploaded file
+The worker performs validation on file types, sizes, and origins before storing them in the R2 bucket.
 
 ## Configuration
 
-Edit the following variables in `index.js` as needed:
+The worker is configured using these key settings:
 
-- `ALLOWED_ORIGINS`: Update with your website domains
-- `MAX_SIZE`: Adjust file size limits if needed
-- `ALLOWED_FILE_TYPES`: Change allowed file types if needed
+- **Allowed Origins**: Only requests from these domains are accepted
+- **Bucket Name**: The R2 bucket where files are stored
+- **File Size Limits**: Maximum allowed file sizes by type
+- **Allowed File Types**: Restricts uploads to specific file formats by type
 
-## Setting Up R2 Public Access
+## Deployment & Usage
 
-To make uploaded files publicly accessible:
+### Prerequisites
 
-1. Go to your Cloudflare R2 dashboard
-2. Click on your "resume" bucket
-3. Go to "Settings" > "Public Access"
-4. Enable public access and set up a custom domain (e.g., `assets.akashpatelresume.us`)
-5. Update the `fileUrl` variable in the worker code to match your custom domain
+1. A Cloudflare account with Workers and R2 enabled
+2. Wrangler CLI installed (`npm install -g wrangler`)
+3. A configured R2 bucket
 
-## Testing
+### Deployment Steps
 
-You can test the worker using tools like `curl`:
+1. Log in to Cloudflare with Wrangler:
+   ```
+   wrangler login
+   ```
 
+2. Configure your R2 bucket in `wrangler.toml`:
+   ```toml
+   [[r2_buckets]]
+   binding = "RESUME_BUCKET"
+   bucket_name = "resume"
+   preview_bucket_name = "resume-dev"
+   ```
+
+3. Deploy the worker:
+   ```
+   wrangler deploy
+   ```
+
+4. Set up a custom domain for your worker (if desired):
+   - Go to Cloudflare Dashboard > Workers & Pages
+   - Find your deployed worker
+   - Click "Add Custom Domain"
+   - Enter: resume-file-uploader.akashpatelresume.us
+
+### Integration with Resume Website
+
+The resume website is already configured to use this worker at the endpoint:
+`https://resume-file-uploader.akashpatelresume.us`
+
+The website makes POST requests with FormData including:
+- `file`: The file being uploaded
+- `type`: One of 'resume', 'eval', or 'photo'
+
+### Testing
+
+You can test the worker directly from the command line:
 ```bash
-curl -X POST \
-  -F "file=@/path/to/test.pdf" \
+curl -X POST https://resume-file-uploader.akashpatelresume.us \
+  -F "file=@path/to/file.pdf" \
   -F "type=resume" \
-  https://resume-file-uploader.YOUR-ACCOUNT.workers.dev/upload
-``` 
+  -H "Origin: https://akashpatelresume.us"
+```
+
+## Security Considerations
+
+- Only allows uploads from authorized domains
+- Implements file type validation
+- Enforces file size limits
+- Uses CORS for controlled cross-origin access
+
+## Maintenance
+
+If you need to make changes:
+
+1. Edit the `index.js` file
+2. Update any configuration settings as needed
+3. Redeploy with `wrangler deploy`
+
+For monitoring:
+- Check worker logs in Cloudflare Dashboard > Workers > Your Worker > Logs
+- View R2 bucket usage in Cloudflare Dashboard > R2 > Buckets > resume
+
+## Troubleshooting
+
+Common issues:
+- CORS errors: Check that the requesting origin is in the ALLOWED_ORIGINS array
+- 413 errors: File exceeds size limit
+- 400 errors: Invalid file type or missing parameters
+- 500 errors: Worker execution error, check logs for details 

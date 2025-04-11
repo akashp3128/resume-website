@@ -973,7 +973,7 @@
           <h3>Work Experience</h3>
           <div class="editable-content" data-content-id="work-experience">
             <p>
-            I'm a software engineer with a strong foundation in C++11, Python, embedded systems, and real-time operating systems. With experience spanning system architecture, algorithm development, and Linux-based optimization, I’ve led and delivered performance-critical solutions across a range of technical projects.
+            I'm a software engineer with a strong foundation in C++11, Python, embedded systems, and real-time operating systems. With experience spanning system architecture, algorithm development, and Linux-based optimization, I've led and delivered performance-critical solutions across a range of technical projects.
             From developing sensor algorithms for autonomous navigation to integrating Bluetooth systems with real-time laser detection, my work emphasizes efficient design, reliability, and low-latency performance. 
             I bring a bias for action, a commitment to continuous learning, and a results-driven mindset shaped by high-stakes environments.
             </p>
@@ -1012,12 +1012,94 @@
   </footer>
 
   <script>
-    // Simple placeholder functionality for the upload buttons
+    // Configure upload endpoints
+    const UPLOAD_ENDPOINT = 'https://resume-file-uploader.akashpatelresume.us';
+    
+    // Handle file uploads
     document.querySelectorAll('.upload-btn').forEach(button => {
-      button.addEventListener('click', function() {
+      button.addEventListener('click', async function() {
         const input = this.previousElementSibling;
+        const section = this.closest('section').id;
+        let fileType;
+        
+        // Determine file type based on section
+        if (section === 'military') {
+          fileType = 'eval';
+        } else if (section === 'resume') {
+          fileType = 'resume';
+        } else if (section === 'about') {
+          fileType = 'photo';
+        }
+        
         if (input.files.length > 0) {
-          alert('In a complete implementation, this would upload the file: ' + input.files[0].name);
+          const file = input.files[0];
+          
+          // Create FormData
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('type', fileType);
+          
+          try {
+            // Show loading indicator
+            this.textContent = 'Uploading...';
+            this.disabled = true;
+            
+            // Upload to Cloudflare Worker
+            const response = await fetch(UPLOAD_ENDPOINT, {
+              method: 'POST',
+              body: formData
+            });
+            
+            // Reset button state
+            this.textContent = 'Upload';
+            this.disabled = false;
+            
+            if (response.ok) {
+              const result = await response.json();
+              
+              // Handle successful upload
+              if (fileType === 'photo') {
+                // Photo already previewed via the change event handler
+                alert('Photo uploaded successfully!');
+              } else if (fileType === 'resume' || fileType === 'eval') {
+                // Update the document list
+                const listElement = this.closest('.card').querySelector('ul, p');
+                if (listElement.tagName === 'UL') {
+                  // For evaluations (which have a list)
+                  if (listElement.innerHTML.includes('No evaluations uploaded yet')) {
+                    listElement.innerHTML = '';
+                  }
+                  const li = document.createElement('li');
+                  const a = document.createElement('a');
+                  a.href = result.url;
+                  a.target = '_blank';
+                  a.textContent = file.name;
+                  li.appendChild(a);
+                  listElement.appendChild(li);
+                } else {
+                  // For resume (which has a paragraph)
+                  const p = listElement;
+                  p.innerHTML = '';
+                  const a = document.createElement('a');
+                  a.href = result.url;
+                  a.target = '_blank';
+                  a.textContent = file.name;
+                  p.appendChild(a);
+                }
+                alert('Document uploaded successfully!');
+              }
+            } else {
+              const errorData = await response.json();
+              alert(`Upload failed: ${errorData.error || 'Unknown error'}`);
+            }
+          } catch (error) {
+            // Reset button state
+            this.textContent = 'Upload';
+            this.disabled = false;
+            
+            console.error('Upload error:', error);
+            alert('Upload failed. Please try again later.');
+          }
         } else {
           alert('Please select a file first');
         }
