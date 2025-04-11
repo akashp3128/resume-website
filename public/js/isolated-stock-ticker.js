@@ -1,6 +1,6 @@
 /**
  * Isolated Stock Ticker Implementation
- * Focused on just the stock ticker functionality with clean error handling
+ * Uses YFinance backend when available, with fallback to static data
  */
 
 // Configuration - requested stock symbols
@@ -9,11 +9,18 @@ const STOCK_SYMBOLS = [
   'NVDA', 'XRP-USD', 'META', 'TSLA', 'GOOGL', 'PLTR'
 ];
 
+// YFinance backend configuration
+const BACKEND_URL = 'http://localhost:3000';
+const BACKEND_AVAILABLE = typeof window !== 'undefined' && 
+                         (window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1');
+
 // Track API state
-let usingFallbackMode = false;
+let usingFallbackMode = !BACKEND_AVAILABLE; // Start in fallback mode on production
 let apiFailureCount = 0;
 const MAX_FAILURES = 3;
 const REFRESH_INTERVAL = 120000; // 2 minutes
+const DEV_REFRESH_INTERVAL = 30000; // 30 seconds for development
 
 /**
  * Initialize the stock ticker
@@ -32,17 +39,23 @@ function initStockTicker() {
   // Start with static data to show something immediately
   renderTickerWithStaticData(tickerElement);
   
-  // Then try to get real data
-  fetchStockData(tickerElement);
+  // Then try to get real data if backend might be available
+  if (!usingFallbackMode) {
+    fetchYFinanceData(tickerElement);
+  }
   
-  // Set up refresh interval
+  // Set up refresh interval - shorter in development
+  const isDevEnvironment = window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1';
+  const refreshInterval = isDevEnvironment ? DEV_REFRESH_INTERVAL : REFRESH_INTERVAL;
+  
   setInterval(() => {
     if (!usingFallbackMode) {
-      fetchStockData(tickerElement);
+      fetchYFinanceData(tickerElement);
     } else {
       updateWithRandomizedData(tickerElement);
     }
-  }, REFRESH_INTERVAL);
+  }, refreshInterval);
 }
 
 /**
@@ -60,7 +73,7 @@ function getStaticStockData() {
   return [
     { symbol: 'BTC-USD', price: '67540.28', change: '+2310.45', changePercent: '+3.54%' },
     { symbol: 'SPY', price: '511.34', change: '+1.23', changePercent: '+0.24%' },
-    { symbol: 'GME', price: '18.29', change: '+0.35', changePercent: '+1.95%' },
+    { symbol: 'GME', price: '25.50', change: '+0.42', changePercent: '+1.67%' }, // Updated GME price
     { symbol: 'AAPL', price: '175.34', change: '+1.23', changePercent: '+0.71%' },
     { symbol: 'MSFT', price: '428.79', change: '+3.45', changePercent: '+0.81%' },
     { symbol: 'NVDA', price: '920.16', change: '+12.56', changePercent: '+1.38%' },
@@ -73,79 +86,97 @@ function getStaticStockData() {
 }
 
 /**
- * Attempt to fetch real stock data
+ * Attempt to fetch data from YFinance backend
  */
-async function fetchStockData(tickerElement) {
-  // Alpha Vantage API setup
-  const API_KEY = 'demo'; // Replace with your key for production
-  const API_ENDPOINT = 'https://www.alphavantage.co/query?function=GLOBAL_QUOTE';
-  
+async function fetchYFinanceData(tickerElement) {
   try {
-    const stockData = [];
-    let successfulFetches = 0;
+    console.log("Attempting to fetch data from YFinance backend...");
     
-    // Due to API rate limits, only fetch a subset
-    const symbolsToFetch = STOCK_SYMBOLS.slice(0, 5);
+    // First check if backend is available with a health check
+    const healthResponse = await Promise.race([
+      fetch(`${BACKEND_URL}/health`).then(response => response.ok),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+    ]).catch(() => false);
     
-    for (const symbol of symbolsToFetch) {
-      try {
-        const response = await fetch(`${API_ENDPOINT}&symbol=${symbol}&apikey=${API_KEY}`);
-        const data = await response.json();
-        
-        if (data && data['Global Quote'] && Object.keys(data['Global Quote']).length > 0) {
-          const quote = data['Global Quote'];
-          stockData.push({
-            symbol: symbol,
-            price: quote['05. price'] || '0.00',
-            change: quote['09. change'] || '0.00',
-            changePercent: quote['10. change percent'] || '0.00%'
-          });
-          successfulFetches++;
-        } else {
-          // Add mock data for this symbol
-          const mockData = getStaticDataForSymbol(symbol);
-          if (mockData) stockData.push(mockData);
-        }
-      } catch (err) {
-        console.error(`Error fetching ${symbol}:`, err);
-        // Add mock data on error
-        const mockData = getStaticDataForSymbol(symbol);
-        if (mockData) stockData.push(mockData);
-      }
-      
-      // Delay between requests to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 1200));
+    if (!healthResponse) {
+      console.warn("YFinance backend not available, falling back to static data");
+      apiFailureCount++;
+      checkFailureStatus(tickerElement);
+      return;
     }
     
-    // Render whatever data we have
-    if (stockData.length > 0) {
-      renderTicker(tickerElement, stockData);
+    // Fetch data from backend
+    const response = await Promise.race([
+      fetch(`${BACKEND_URL}/api/quotes`),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+    ]);
+    
+    if (!response.ok) {
+      throw new Error(`Server responded with status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (Array.isArray(data) && data.length > 0) {
+      console.log("Successfully fetched market data from YFinance backend");
       
-      // Update API failure tracking
-      if (successfulFetches > 0) {
-        apiFailureCount = 0;
-        usingFallbackMode = false;
-      } else {
-        apiFailureCount++;
-        if (apiFailureCount >= MAX_FAILURES) {
-          console.warn('Switching to fallback mode due to API failures');
-          usingFallbackMode = true;
-        }
-      }
+      // Process data to match our format
+      const processedData = data.map(item => {
+        // Convert "BTC" to "BTC-USD" format if needed
+        const symbol = item.symbol === 'BTC' ? 'BTC-USD' : 
+                       item.symbol === 'XRP' ? 'XRP-USD' : 
+                       item.symbol === 'ETH' ? 'ETH-USD' : 
+                       item.symbol === 'DOGE' ? 'DOGE-USD' : item.symbol;
+        
+        return {
+          symbol: symbol,
+          price: item.price,
+          change: item.change,
+          changePercent: item.changePercent
+        };
+      });
+      
+      // Render the data
+      renderTicker(tickerElement, processedData);
+      
+      // Reset failure count since we got data successfully
+      apiFailureCount = 0;
+      usingFallbackMode = false;
     } else {
+      console.warn("YFinance backend returned no data");
       apiFailureCount++;
-      if (apiFailureCount >= MAX_FAILURES) {
-        usingFallbackMode = true;
-        updateWithRandomizedData(tickerElement);
-      }
+      checkFailureStatus(tickerElement);
     }
   } catch (error) {
-    console.error('Stock data fetch error:', error);
+    console.error("Error fetching from YFinance backend:", error);
     apiFailureCount++;
-    if (apiFailureCount >= MAX_FAILURES) {
-      usingFallbackMode = true;
-      updateWithRandomizedData(tickerElement);
-    }
+    checkFailureStatus(tickerElement);
+  }
+}
+
+/**
+ * Check if we've hit max failures and should switch to fallback mode
+ */
+function checkFailureStatus(tickerElement) {
+  if (apiFailureCount >= MAX_FAILURES) {
+    console.warn('Switching to fallback mode due to API failures');
+    usingFallbackMode = true;
+    
+    // If we don't have data yet, update with randomized data
+    updateWithRandomizedData(tickerElement);
+  }
+}
+
+/**
+ * Legacy function - attempt to fetch from Alpha Vantage
+ * Only kept for backward compatibility, not actually used anymore
+ */
+async function fetchStockData(tickerElement) {
+  // We now use YFinance backend instead - route to that function if called
+  if (!usingFallbackMode) {
+    fetchYFinanceData(tickerElement);
+  } else {
+    updateWithRandomizedData(tickerElement);
   }
 }
 
@@ -189,15 +220,25 @@ function renderTicker(tickerElement, stockData) {
   
   // Double the items for smooth looping animation
   const tickerContent = [...stockData, ...stockData].map(stock => {
-    const isPositive = !stock.change.includes('-');
+    // Parse change and determine if positive
+    const change = typeof stock.change === 'string' ? stock.change : stock.change.toString();
+    const isPositive = !change.startsWith('-');
     const changeClass = isPositive ? 'positive' : 'negative';
     const changeSymbol = isPositive ? '▲' : '▼';
+    
+    // Format price - ensure we're using the exact price from the data
+    const price = typeof stock.price === 'string' ? stock.price : stock.price.toString();
+    
+    // Format the change value correctly - remove + or - and use the absolute value
+    const changeAbs = isPositive ? 
+                     (change.startsWith('+') ? change.substring(1) : change) : 
+                     change.substring(1);
     
     return `
       <div class="stock-item">
         <span class="stock-symbol">${stock.symbol}</span>
-        <span class="stock-price">$${parseFloat(stock.price).toFixed(2)}</span>
-        <span class="stock-change ${changeClass}">${changeSymbol} ${Math.abs(parseFloat(stock.change)).toFixed(2)} (${stock.changePercent})</span>
+        <span class="stock-price">$${price}</span>
+        <span class="stock-change ${changeClass}">${changeSymbol} ${changeAbs} (${stock.changePercent})</span>
       </div>
     `;
   }).join('');

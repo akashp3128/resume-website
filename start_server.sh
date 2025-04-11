@@ -1,99 +1,97 @@
 #!/bin/bash
 
-# Colors for better output
+# ANSI color codes
 GREEN='\033[0;32m'
-RED='\033[0;31m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Function to check if a port is available
-check_port() {
-    local port=$1
-    if command -v lsof >/dev/null 2>&1; then
-        if lsof -i :$port >/dev/null 2>&1; then
-            echo -e "${RED}Error: Port $port is already in use.${NC}"
-            echo -e "Run the following command to see which process is using it:"
-            echo -e "${YELLOW}lsof -i :$port${NC}"
-            return 1
-        fi
+# Function to check if a port is in use
+function is_port_in_use() {
+  lsof -i:$1 > /dev/null
+  return $?
+}
+
+# Function to stop servers on specific ports
+function stop_servers() {
+  local ports=("$@")
+  
+  for port in "${ports[@]}"; do
+    echo -e "${YELLOW}Checking if port $port is in use...${NC}"
+    if is_port_in_use $port; then
+      echo -e "${YELLOW}Stopping server on port $port...${NC}"
+      kill $(lsof -t -i:$port) 2>/dev/null || true
+      sleep 1
     else
-        # If lsof is not available, try netstat
-        if command -v netstat >/dev/null 2>&1; then
-            if netstat -tuln | grep ":$port " >/dev/null 2>&1; then
-                echo -e "${RED}Error: Port $port is already in use.${NC}"
-                return 1
-            fi
-        fi
+      echo -e "${GREEN}No server running on port $port.${NC}"
     fi
-    return 0
+  done
 }
 
-# Function to kill processes and clean up
-cleanup() {
-    echo -e "\n${YELLOW}Shutting down servers...${NC}"
-    
-    # Kill the HTTP server
-    if [ -n "$SERVER_PID" ] && ps -p $SERVER_PID > /dev/null; then
-        echo "Stopping HTTP server (PID: $SERVER_PID)..."
-        kill $SERVER_PID 2>/dev/null || kill -9 $SERVER_PID 2>/dev/null
-    fi
-    
-    # Kill the upload server
-    if [ -n "$UPLOAD_PID" ] && ps -p $UPLOAD_PID > /dev/null; then
-        echo "Stopping upload server (PID: $UPLOAD_PID)..."
-        kill $UPLOAD_PID 2>/dev/null || kill -9 $UPLOAD_PID 2>/dev/null
-    fi
-    
-    echo -e "${GREEN}Servers stopped successfully.${NC}"
-    exit 0
-}
+# Stop any existing servers
+stop_servers 8000 8001 3000
 
-# Set up the trap to catch Ctrl+C and other signals
-trap cleanup INT TERM EXIT
+# Make sure scripts are executable
+chmod +x upload-handler/upload_server.py
+chmod +x stock-data-server.py
 
-# Check if ports are available
-check_port 8000 || exit 1
-check_port 8001 || exit 1
-
-# Create uploads directory
-mkdir -p uploads/resume uploads/eval uploads/photo
-echo -e "${GREEN}Upload directories created.${NC}"
-
-# Start the HTTP server
-echo -e "${GREEN}Starting HTTP server at http://localhost:8000${NC}"
-python3 -m http.server 8000 &
-SERVER_PID=$!
-
-# Check if HTTP server started correctly
-sleep 1
-if ! ps -p $SERVER_PID > /dev/null; then
-    echo -e "${RED}Failed to start HTTP server.${NC}"
-    exit 1
-fi
-
-# Start the upload server
-echo -e "${GREEN}Starting backup upload handler at http://localhost:8001${NC}"
+# Start upload server
+echo -e "${GREEN}Starting upload server on port 8001...${NC}"
 cd upload-handler
 python3 upload_server.py &
 UPLOAD_PID=$!
-
-# Return to original directory
 cd ..
 
-# Check if upload server started correctly
-sleep 1
-if ! ps -p $UPLOAD_PID > /dev/null; then
-    echo -e "${RED}Failed to start upload server.${NC}"
-    echo -e "${RED}Check the upload-handler/upload_server.py file for errors.${NC}"
-    echo -e "You can run it manually with: cd upload-handler && python3 upload_server.py"
-    kill $SERVER_PID
-    exit 1
+# Wait for upload server to start
+sleep 2
+if is_port_in_use 8001; then
+  echo -e "${GREEN}Upload server started successfully.${NC}"
+else
+  echo -e "${RED}Error: Upload server failed to start.${NC}"
+  echo -e "${YELLOW}Check logs above for errors.${NC}"
+  exit 1
 fi
 
-echo -e "${GREEN}Both servers running successfully.${NC}"
-echo -e "HTTP Server (PID: ${YELLOW}$SERVER_PID${NC}) at http://localhost:8000"
-echo -e "Upload Server (PID: ${YELLOW}$UPLOAD_PID${NC}) at http://localhost:8001"
-echo -e "${YELLOW}Press Ctrl+C to stop both servers.${NC}"
+# Start YFinance backend for stock ticker
+echo -e "${GREEN}Starting YFinance backend for stock ticker on port 3000...${NC}"
+./stock-data-server.py &
+YFINANCE_PID=$!
 
-# Wait for both servers to be killed
+# Wait for YFinance backend to start
+sleep 2
+if is_port_in_use 3000; then
+  echo -e "${GREEN}YFinance backend started successfully.${NC}"
+else
+  echo -e "${YELLOW}Warning: YFinance backend failed to start. Stock ticker will use fallback data.${NC}"
+  echo -e "${YELLOW}This is not critical - the website will still function.${NC}"
+fi
+
+# Start the main web server
+echo -e "${GREEN}Starting main web server on port 8000...${NC}"
+python3 -m http.server 8000 &
+HTTP_PID=$!
+
+# Wait for web server to start
+sleep 1
+if is_port_in_use 8000; then
+  echo -e "${GREEN}Web server started successfully.${NC}"
+else
+  echo -e "${RED}Error: Web server failed to start.${NC}"
+  stop_servers 8001 3000
+  exit 1
+fi
+
+# Information about access
+echo -e "\n${GREEN}=======================================================${NC}"
+echo -e "${GREEN}All servers started successfully!${NC}"
+echo -e "${GREEN}Main website:${NC} http://localhost:8000"
+echo -e "${GREEN}Upload server:${NC} http://localhost:8001"
+echo -e "${GREEN}YFinance backend:${NC} http://localhost:3000"
+echo -e "${GREEN}=======================================================${NC}"
+echo -e "${YELLOW}Press Ctrl+C to stop all servers.${NC}\n"
+
+# Handle termination
+trap "echo -e '${YELLOW}Shutting down servers...${NC}'; stop_servers 8000 8001 3000; exit 0" INT TERM
+
+# Keep script running
 wait 
