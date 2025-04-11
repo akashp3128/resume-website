@@ -785,6 +785,44 @@
         justify-content: center;
       }
     }
+
+    .pdf-viewer {
+      width: 100%;
+      height: 600px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin: 1rem 0;
+    }
+    
+    .resume-preview-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+    }
+    
+    .resume-actions {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    
+    .resume-download-link {
+      color: var(--primary-color);
+      text-decoration: none;
+      font-weight: bold;
+      margin-right: 1rem;
+    }
+    
+    .resume-download-link:hover {
+      color: var(--accent-color);
+      text-decoration: underline;
+    }
+    
+    @media (max-width: 768px) {
+      .pdf-viewer {
+        height: 400px;
+      }
+    }
   </style>
   
   <!-- Admin Login Modal -->
@@ -981,7 +1019,9 @@
           </div>
           
           <h3>Resume</h3>
-          <p id="resume-link">No resume uploaded yet</p>
+          <div id="resume-container">
+            <p id="resume-link">No resume uploaded yet</p>
+          </div>
           <div class="upload-section">
             <p>Upload your resume (Max: 10MB, PDF only)</p>
             <input type="file" accept="application/pdf" id="resume-upload">
@@ -1259,14 +1299,47 @@
               } else if (fileType === 'resume' || fileType === 'eval') {
                 // Update the document list
                 if (fileType === 'resume') {
-                  // For resume (which has a specific paragraph with ID)
-                  const p = document.getElementById('resume-link');
-                  p.innerHTML = '';
-                  const a = document.createElement('a');
-                  a.href = result.url;
-                  a.target = '_blank';
-                  a.textContent = file.name;
-                  p.appendChild(a);
+                  // For resume, display the PDF directly
+                  const container = document.getElementById('resume-container');
+                  
+                  // Create the preview container
+                  const previewContainer = document.createElement('div');
+                  previewContainer.className = 'resume-preview-container';
+                  
+                  // Create actions bar with download link
+                  const actionsDiv = document.createElement('div');
+                  actionsDiv.className = 'resume-actions';
+                  
+                  // Create download link
+                  const downloadLink = document.createElement('a');
+                  downloadLink.href = result.url;
+                  downloadLink.className = 'resume-download-link';
+                  downloadLink.textContent = 'Download Resume';
+                  downloadLink.target = '_blank';
+                  actionsDiv.appendChild(downloadLink);
+                  
+                  // Add filename display
+                  const filenameSpan = document.createElement('span');
+                  filenameSpan.textContent = file.name;
+                  filenameSpan.style.color = '#666';
+                  filenameSpan.style.fontSize = '0.9rem';
+                  actionsDiv.appendChild(filenameSpan);
+                  
+                  previewContainer.appendChild(actionsDiv);
+                  
+                  // Create PDF viewer
+                  const pdfViewer = document.createElement('iframe');
+                  pdfViewer.className = 'pdf-viewer';
+                  pdfViewer.src = result.url;
+                  pdfViewer.title = 'Resume PDF';
+                  pdfViewer.setAttribute('frameborder', '0');
+                  pdfViewer.setAttribute('loading', 'lazy');
+                  
+                  previewContainer.appendChild(pdfViewer);
+                  
+                  // Clear container and add new elements
+                  container.innerHTML = '';
+                  container.appendChild(previewContainer);
                 } else {
                   // For evaluations (which have a list)
                   const listElement = this.closest('.card').querySelector('ul');
