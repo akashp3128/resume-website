@@ -6,7 +6,8 @@ import os
 import sys
 import time
 from urllib.parse import urlparse, parse_qs
-from datetime import datetime
+from datetime import datetime, timedelta
+import requests
 
 # Custom JSON encoder to handle datetime objects
 class DateTimeEncoder(json.JSONEncoder):
@@ -513,12 +514,17 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
         return get_stock_data(symbol)
     
     def _get_historical_data(self, symbol, days=30):
-        """Get historical data for a symbol from MongoDB or YFinance"""
+        """Get historical data for a symbol from Twelvedata, MongoDB, or YFinance"""
+        # First try Twelvedata if API key is available
+        if twelvedata_enabled and TWELVEDATA_API_KEY:
+            twelve_data = get_twelvedata_historical(symbol, days)
+            if twelve_data and len(twelve_data) > 0:
+                return twelve_data
+        
+        # Then try MongoDB
         if mongo_client:
-            # Try to get from MongoDB first
-            cutoff_date = datetime.now()
-            cutoff_date = cutoff_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            # Adjust cutoff_date based on days parameter
+            # Calculate cutoff date
+            cutoff_date = datetime.now() - timedelta(days=days)
             
             historical_data = list(historical_collection.find(
                 {"symbol": symbol, "timestamp": {"$gte": cutoff_date}},
@@ -528,7 +534,7 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
             if historical_data and len(historical_data) > 10:  # Enough data points
                 return historical_data
         
-        # If MongoDB doesn't have data or not connected, fetch from YFinance
+        # Finally, fall back to YFinance
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=f"{days}d")
         
@@ -545,7 +551,8 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
                 "open": f"{row['Open']:.2f}",
                 "high": f"{row['High']:.2f}",
                 "low": f"{row['Low']:.2f}",
-                "volume": int(row['Volume'])
+                "volume": int(row['Volume']),
+                "source": "yfinance"
             }
             result.append(data_point)
             
@@ -707,6 +714,83 @@ def get_stock_data(symbol):
         'raw_change_percent': change_percent,
         'last_updated': datetime.now().isoformat()
     }
+
+def get_twelvedata_historical(symbol, days=30):
+    """Fetch historical data using Twelvedata REST API"""
+    if not TWELVEDATA_API_KEY:
+        print("Twelvedata API key not set, cannot fetch historical data")
+        return None
+    
+    # Calculate start date (days ago from today)
+    start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    
+    # Base URL for the API
+    base_url = "https://api.twelvedata.com/time_series"
+    
+    # Parameters for the request
+    params = {
+        "apikey": TWELVEDATA_API_KEY,
+        "symbol": symbol,
+        "interval": "1day",  # Daily data
+        "format": "JSON",
+        "start_date": start_date
+    }
+    
+    try:
+        # Make the request
+        print(f"Fetching historical data for {symbol} from Twelvedata API...")
+        response = requests.get(base_url, params=params)
+        
+        # Check if the request was successful
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Check if we got valid data
+            if "values" in data:
+                # Format the response for our API
+                result = []
+                for value in data["values"]:
+                    # Convert string date to datetime object
+                    timestamp = datetime.strptime(value["datetime"], "%Y-%m-%d")
+                    
+                    # Create data point in our format
+                    data_point = {
+                        "symbol": symbol,
+                        "timestamp": timestamp,
+                        "price": value["close"],
+                        "open": value["open"],
+                        "high": value["high"],
+                        "low": value["low"],
+                        "volume": int(float(value.get("volume", 0))),
+                        "source": "twelvedata_rest"
+                    }
+                    result.append(data_point)
+                    
+                    # Save to MongoDB if available
+                    if mongo_client:
+                        try:
+                            historical_collection.update_one(
+                                {"symbol": symbol, "timestamp": timestamp},
+                                {"$set": data_point},
+                                upsert=True
+                            )
+                        except Exception as e:
+                            print(f"Error saving historical data for {symbol} to MongoDB: {e}")
+                
+                print(f"Retrieved {len(result)} historical data points for {symbol}")
+                return result
+            else:
+                print(f"No historical values found for {symbol}")
+                if "message" in data:
+                    print(f"Twelvedata API message: {data['message']}")
+                return None
+        else:
+            print(f"Error fetching historical data: {response.status_code}")
+            print(response.text)
+            return None
+    except Exception as e:
+        print(f"Exception fetching historical data from Twelvedata: {e}")
+        return None
 
 if __name__ == "__main__":
     try:

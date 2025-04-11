@@ -31,8 +31,8 @@ echo "Activating virtual environment..."
 source twelvedata-env/bin/activate
 
 # Install dependencies
-echo "Installing Twelvedata package with websocket support..."
-pip install 'twelvedata[websocket]'
+echo "Installing required packages..."
+pip install 'twelvedata[websocket]' requests
 
 echo -e "\n${BOLD}${GREEN}Step 2: Get Twelvedata API Key${RESET}"
 echo -e "You need an API key from Twelvedata to use real-time data."
