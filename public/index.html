@@ -53,6 +53,74 @@
       --spacing-lg: 2rem;
     }
     
+    /* Stock Ticker Styles */
+    .stock-ticker-container {
+      width: 100%;
+      background-color: #222;
+      margin: 1rem 0;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+    
+    .stock-ticker-wrapper {
+      padding: 0.5rem 0;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .stock-ticker {
+      white-space: nowrap;
+      display: inline-block;
+      animation: ticker-scroll 60s linear infinite;
+      padding-right: 50px; /* Space between end and restart */
+    }
+    
+    .stock-ticker:hover {
+      animation-play-state: paused;
+    }
+    
+    @keyframes ticker-scroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    
+    .stock-item {
+      display: inline-block;
+      margin-right: 20px;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 3px;
+      background-color: rgba(0, 0, 0, 0.3);
+    }
+    
+    .stock-symbol {
+      font-weight: bold;
+      margin-right: 0.5rem;
+      color: #e3e3e3;
+    }
+    
+    .stock-price {
+      margin-right: 0.5rem;
+      color: #fff;
+    }
+    
+    .stock-change {
+      font-weight: bold;
+    }
+    
+    .stock-change.positive {
+      color: #4caf50;
+    }
+    
+    .stock-change.negative {
+      color: #f44336;
+    }
+    
+    /* End Stock Ticker Styles */
+    
     * {
       box-sizing: border-box;
       transition: background-color 0.3s ease;
@@ -1063,139 +1131,151 @@
       </nav>
     </div>
   </header>
-
-  <div class="container">
-    <div id="admin-controls">
-      <button id="logout-btn" class="action-btn">
-        <span class="btn-icon">⚙️</span> Logout Admin
-      </button>
+  
+  <!-- Stock Ticker -->
+  <div class="stock-ticker-container">
+    <div class="stock-ticker-wrapper">
+      <div class="stock-ticker" id="stock-ticker">
+        <!-- Stock data will be populated by JavaScript -->
+        <div class="stock-item">Loading stock data...</div>
+      </div>
     </div>
-    
-    <div class="roman-column">
-      <h1>Welcome to My Website</h1>
-      
-      <div class="action-buttons">
-        <button id="theme-btn" class="action-btn" aria-label="Toggle dark mode">
-          <span class="btn-icon">&#9728;</span> Toggle Theme
+  </div>
+  
+  <main>
+    <div class="container">
+      <div id="admin-controls">
+        <button id="logout-btn" class="action-btn">
+          <span class="btn-icon">⚙️</span> Logout Admin
         </button>
       </div>
       
-      <section id="about">
-        <h2>About Me</h2>
-        <div class="card">
-          <h3>About Me</h3>
-          <div class="editable-content" data-content-id="about-text">
-            <p>
-              I am a dedicated professional with a passion for serving my country and building meaningful projects. 
-              With a strong background in the Navy and software engineering, I bring discipline, leadership, 
-              and technical expertise to everything I do. I am currently seeking new opportunities to leverage my 
-              unique skill set in challenging environments.
-            </p>
-            <button class="edit-button">Edit</button>
-          </div>
-        </div>
-      </section>
-      
-      <section id="resume">
-        <h2>Resume & Experience</h2>
+      <div class="roman-column">
+        <h1>Welcome to My Website</h1>
         
-        <div class="two-column">
-          <div>
-            <div class="card">
-              <h3>Work Experience</h3>
-              <div class="editable-content" data-content-id="work-experience">
-                <p>
-                I'm a software engineer with a strong foundation in C++11, Python, embedded systems, and real-time operating systems. With experience spanning system architecture, algorithm development, and Linux-based optimization, I've led and delivered performance-critical solutions across a range of technical projects.
-                From developing sensor algorithms for autonomous navigation to integrating Bluetooth systems with real-time laser detection, my work emphasizes efficient design, reliability, and low-latency performance. 
-                I bring a bias for action, a commitment to continuous learning, and a results-driven mindset shaped by high-stakes environments.
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div>
-            <div class="card">
-              <h3>Upload Resume</h3>
-              <div class="upload-container">
-                <div id="resume-upload-status"></div>
-                <form id="resume-upload-form" class="upload-form">
-                  <label for="resume-file" class="upload-btn">
-                    <span>Choose PDF</span>
-                    <input type="file" id="resume-file" accept=".pdf" hidden>
-                  </label>
-                  <div class="file-info" id="resume-file-info">No file selected</div>
-                  <button type="submit" class="submit-btn">Upload Resume</button>
-                </form>
-                <div id="resume-preview" class="preview-container"></div>
-              </div>
-            </div>
-          </div>
+        <div class="action-buttons">
+          <button id="theme-btn" class="action-btn" aria-label="Toggle dark mode">
+            <span class="btn-icon">&#9728;</span> Toggle Theme
+          </button>
         </div>
-      </section>
-      
-      <section id="navy-career">
-        <h2>Navy Career</h2>
         
-        <div class="three-column">
-          <div>
-            <div class="card">
-              <h3>Upload Eval Documents</h3>
-              <div class="upload-container">
-                <div id="eval-upload-status"></div>
-                <form id="eval-upload-form" class="upload-form">
-                  <label for="eval-file" class="upload-btn">
-                    <span>Choose PDF</span>
-                    <input type="file" id="eval-file" accept=".pdf" hidden>
-                  </label>
-                  <div class="file-info" id="eval-file-info">No file selected</div>
-                  <button type="submit" class="submit-btn">Upload Evaluation</button>
-                </form>
-                <div id="eval-preview" class="preview-container"></div>
-              </div>
+        <section id="about">
+          <h2>About Me</h2>
+          <div class="card">
+            <h3>About Me</h3>
+            <div class="editable-content" data-content-id="about-text">
+              <p>
+                I am a dedicated professional with a passion for serving my country and building meaningful projects. 
+                With a strong background in the Navy and software engineering, I bring discipline, leadership, 
+                and technical expertise to everything I do. I am currently seeking new opportunities to leverage my 
+                unique skill set in challenging environments.
+              </p>
+              <button class="edit-button">Edit</button>
             </div>
           </div>
+        </section>
+        
+        <section id="resume">
+          <h2>Resume & Experience</h2>
           
-          <div>
-            <div class="card">
-              <h3>Upload Uniform Photo</h3>
-              <div class="upload-container">
-                <div id="photo-upload-status"></div>
-                <form id="photo-upload-form" class="upload-form">
-                  <label for="photo-file" class="upload-btn">
-                    <span>Choose Image</span>
-                    <input type="file" id="photo-file" accept="image/*" hidden>
-                  </label>
-                  <div class="file-info" id="photo-file-info">No file selected</div>
-                  <button type="submit" class="submit-btn">Upload Photo</button>
-                </form>
-                <div id="photo-preview" class="preview-container"></div>
+          <div class="two-column">
+            <div>
+              <div class="card">
+                <h3>Work Experience</h3>
+                <div class="editable-content" data-content-id="work-experience">
+                  <p>
+                  I'm a software engineer with a strong foundation in C++11, Python, embedded systems, and real-time operating systems. With experience spanning system architecture, algorithm development, and Linux-based optimization, I've led and delivered performance-critical solutions across a range of technical projects.
+                  From developing sensor algorithms for autonomous navigation to integrating Bluetooth systems with real-time laser detection, my work emphasizes efficient design, reliability, and low-latency performance. 
+                  I bring a bias for action, a commitment to continuous learning, and a results-driven mindset shaped by high-stakes environments.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <div class="card">
+                <h3>Upload Resume</h3>
+                <div class="upload-container">
+                  <div id="resume-upload-status"></div>
+                  <form id="resume-upload-form" class="upload-form">
+                    <label for="resume-file" class="upload-btn">
+                      <span>Choose PDF</span>
+                      <input type="file" id="resume-file" accept=".pdf" hidden>
+                    </label>
+                    <div class="file-info" id="resume-file-info">No file selected</div>
+                    <button type="submit" class="submit-btn">Upload Resume</button>
+                  </form>
+                  <div id="resume-preview" class="preview-container"></div>
+                </div>
               </div>
             </div>
           </div>
+        </section>
+        
+        <section id="navy-career">
+          <h2>Navy Career</h2>
           
-          <div>
-            <div class="card">
-              <h3>Military Experience</h3>
-              <div class="editable-content" data-content-id="military-experience">
-                <p>Add your Navy career details here, including rank, stations, achievements, and notable experiences. This section can highlight leadership roles, specialized training, and awards received during your service.</p>
+          <div class="three-column">
+            <div>
+              <div class="card">
+                <h3>Upload Eval Documents</h3>
+                <div class="upload-container">
+                  <div id="eval-upload-status"></div>
+                  <form id="eval-upload-form" class="upload-form">
+                    <label for="eval-file" class="upload-btn">
+                      <span>Choose PDF</span>
+                      <input type="file" id="eval-file" accept=".pdf" hidden>
+                    </label>
+                    <div class="file-info" id="eval-file-info">No file selected</div>
+                    <button type="submit" class="submit-btn">Upload Evaluation</button>
+                  </form>
+                  <div id="eval-preview" class="preview-container"></div>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <div class="card">
+                <h3>Upload Uniform Photo</h3>
+                <div class="upload-container">
+                  <div id="photo-upload-status"></div>
+                  <form id="photo-upload-form" class="upload-form">
+                    <label for="photo-file" class="upload-btn">
+                      <span>Choose Image</span>
+                      <input type="file" id="photo-file" accept="image/*" hidden>
+                    </label>
+                    <div class="file-info" id="photo-file-info">No file selected</div>
+                    <button type="submit" class="submit-btn">Upload Photo</button>
+                  </form>
+                  <div id="photo-preview" class="preview-container"></div>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <div class="card">
+                <h3>Military Experience</h3>
+                <div class="editable-content" data-content-id="military-experience">
+                  <p>Add your Navy career details here, including rank, stations, achievements, and notable experiences. This section can highlight leadership roles, specialized training, and awards received during your service.</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </section>
-      
-      <section id="contact">
-        <h2>Contact Me</h2>
-        <div class="card">
-          <h3>Get In Touch</h3>
-          <p>If you'd like to connect or have any questions, feel free to reach out to me directly:</p>
-          <div class="contact-info">
-            <a href="mailto:akashp3128@gmail.com" class="email-link">akashp3128@gmail.com</a>
+        </section>
+        
+        <section id="contact">
+          <h2>Contact Me</h2>
+          <div class="card">
+            <h3>Get In Touch</h3>
+            <p>If you'd like to connect or have any questions, feel free to reach out to me directly:</p>
+            <div class="contact-info">
+              <a href="mailto:akashp3128@gmail.com" class="email-link">akashp3128@gmail.com</a>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
-  </div>
+  </main>
 
   <footer>
     <div class="container" style="max-width: 600px; padding: 0 1rem;">
@@ -1502,5 +1582,8 @@
       });
     });
   </script>
+  
+  <!-- Stock Ticker Script -->
+  <script src="js/isolated-stock-ticker.js"></script>
 </body>
 </html> 

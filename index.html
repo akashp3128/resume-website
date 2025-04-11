@@ -53,6 +53,74 @@
       --spacing-lg: 2rem;
     }
     
+    /* Stock Ticker Styles */
+    .stock-ticker-container {
+      width: 100%;
+      background-color: #222;
+      margin: 1rem 0;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+    
+    .stock-ticker-wrapper {
+      padding: 0.5rem 0;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .stock-ticker {
+      white-space: nowrap;
+      display: inline-block;
+      animation: ticker-scroll 60s linear infinite;
+      padding-right: 50px; /* Space between end and restart */
+    }
+    
+    .stock-ticker:hover {
+      animation-play-state: paused;
+    }
+    
+    @keyframes ticker-scroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    
+    .stock-item {
+      display: inline-block;
+      margin-right: 20px;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 3px;
+      background-color: rgba(0, 0, 0, 0.3);
+    }
+    
+    .stock-symbol {
+      font-weight: bold;
+      margin-right: 0.5rem;
+      color: #e3e3e3;
+    }
+    
+    .stock-price {
+      margin-right: 0.5rem;
+      color: #fff;
+    }
+    
+    .stock-change {
+      font-weight: bold;
+    }
+    
+    .stock-change.positive {
+      color: #4caf50;
+    }
+    
+    .stock-change.negative {
+      color: #f44336;
+    }
+    
+    /* End Stock Ticker Styles */
+    
     * {
       box-sizing: border-box;
       transition: background-color 0.3s ease;
@@ -1029,112 +1097,124 @@
       </nav>
     </div>
   </header>
-
-  <div class="container">
-    <div id="admin-controls">
-      <button id="logout-btn" class="action-btn">
-        <span class="btn-icon">⚙️</span> Logout Admin
-      </button>
+  
+  <!-- Stock Ticker -->
+  <div class="stock-ticker-container">
+    <div class="stock-ticker-wrapper">
+      <div class="stock-ticker" id="stock-ticker">
+        <!-- Stock data will be populated by JavaScript -->
+        <div class="stock-item">Loading stock data...</div>
+      </div>
     </div>
-    
-    <div class="roman-column">
-      <h1>Welcome to My Website</h1>
-      
-      <div class="action-buttons">
-        <button id="theme-btn" class="action-btn" aria-label="Toggle dark mode">
-          <span class="btn-icon">&#9728;</span> Toggle Theme
+  </div>
+  
+  <main>
+    <div class="container">
+      <div id="admin-controls">
+        <button id="logout-btn" class="action-btn">
+          <span class="btn-icon">⚙️</span> Logout Admin
         </button>
       </div>
       
-      <section id="about">
-        <h2>About Me</h2>
-        <div class="card">
-          <h3>About Me</h3>
-          <div class="editable-content" data-content-id="about-text">
-            <p>
-              I am a dedicated professional with a passion for serving my country and building meaningful projects. 
-              With a strong background in the Navy and software engineering, I bring discipline, leadership, 
-              and technical expertise to everything I do. I am currently seeking new opportunities to leverage my 
-              unique skill set in challenging environments.
-            </p>
-            <button class="edit-button">Edit</button>
-          </div>
+      <div class="roman-column">
+        <h1>Welcome to My Website</h1>
+        
+        <div class="action-buttons">
+          <button id="theme-btn" class="action-btn" aria-label="Toggle dark mode">
+            <span class="btn-icon">&#9728;</span> Toggle Theme
+          </button>
         </div>
-      </section>
-      
-      <section id="navy">
-        <h2>Navy Career</h2>
-        <div class="card">
-          <h3>My Photo</h3>
-          <div class="photo-container">
-            <p>No photo uploaded yet</p>
+        
+        <section id="about">
+          <h2>About Me</h2>
+          <div class="card">
+            <h3>About Me</h3>
+            <div class="editable-content" data-content-id="about-text">
+              <p>
+                I am a dedicated professional with a passion for serving my country and building meaningful projects. 
+                With a strong background in the Navy and software engineering, I bring discipline, leadership, 
+                and technical expertise to everything I do. I am currently seeking new opportunities to leverage my 
+                unique skill set in challenging environments.
+              </p>
+              <button class="edit-button">Edit</button>
+            </div>
           </div>
-          <div class="upload-section">
-            <p>Upload a photo in uniform (Max: 10MB, JPEG/JPG/PNG)</p>
-            <input type="file" accept="image/png,image/jpeg,image/jpg" id="photo-upload">
-            <button class="upload-btn">Upload</button>
+        </section>
+        
+        <section id="navy">
+          <h2>Navy Career</h2>
+          <div class="card">
+            <h3>My Photo</h3>
+            <div class="photo-container">
+              <p>No photo uploaded yet</p>
+            </div>
+            <div class="upload-section">
+              <p>Upload a photo in uniform (Max: 10MB, JPEG/JPG/PNG)</p>
+              <input type="file" accept="image/png,image/jpeg,image/jpg" id="photo-upload">
+              <button class="upload-btn">Upload</button>
+            </div>
+            
+            <h3>My Experience</h3>
+            <div class="editable-content" data-content-id="navy-experience">
+              <p>
+                During my time in the U.S. Navy, I proudly served as a Hull Maintenance Technician Second Class (HT2), where I honed skills in leadership, technical expertise, and operational excellence under pressure. 
+                I was one of only five sailors selected out of a command of 2,000 to perform critical Non-Destructive Testing (NDT) inspections at Puget Sound during the COVID-19 2020 mobilization—an assignment that required precision, trust, and technical proficiency. 
+                My assignments included working aboard the USS Frank Cable and USS Emory S. Land in Guam, as well as the USS Michigan, USS Louisiana, and USS Bremerton at Puget Sound Naval Shipyard. 
+                These roles demanded adaptability, teamwork, and a commitment to mission success in both forward-deployed and stateside environments.Throughout my service, I received commendations for leadership and performance, and I was meritoriously advanced to the rank of HT2. My Navy career instilled in me a deep sense of discipline, resilience, and the ability to lead and support teams in high-stakes situations.
+              </p>
+              <button class="edit-button">Edit</button>
+            </div>
+            
+            <h3>Evaluations</h3>
+            <ul class="document-list">
+              <li>No evaluations uploaded yet</li>
+            </ul>
+            <div class="upload-section">
+              <p>Upload evaluation documents (Max: 20MB, PDF, JPEG, or PNG)</p>
+              <input type="file" accept="application/pdf,image/jpeg,image/jpg,image/png" id="eval-upload">
+              <button class="upload-btn">Upload</button>
+            </div>
           </div>
-          
-          <h3>My Experience</h3>
-          <div class="editable-content" data-content-id="navy-experience">
-            <p>
-              During my time in the U.S. Navy, I proudly served as a Hull Maintenance Technician Second Class (HT2), where I honed skills in leadership, technical expertise, and operational excellence under pressure. 
-              I was one of only five sailors selected out of a command of 2,000 to perform critical Non-Destructive Testing (NDT) inspections at Puget Sound during the COVID-19 2020 mobilization—an assignment that required precision, trust, and technical proficiency. 
-              My assignments included working aboard the USS Frank Cable and USS Emory S. Land in Guam, as well as the USS Michigan, USS Louisiana, and USS Bremerton at Puget Sound Naval Shipyard. 
-              These roles demanded adaptability, teamwork, and a commitment to mission success in both forward-deployed and stateside environments.Throughout my service, I received commendations for leadership and performance, and I was meritoriously advanced to the rank of HT2. My Navy career instilled in me a deep sense of discipline, resilience, and the ability to lead and support teams in high-stakes situations.
-            </p>
-            <button class="edit-button">Edit</button>
+        </section>
+        
+        <section id="resume">
+          <h2>Resume</h2>
+          <div class="card">
+            <h3>Work Experience</h3>
+            <div class="editable-content" data-content-id="work-experience">
+              <p>
+              I'm a software engineer with a strong foundation in C++11, Python, embedded systems, and real-time operating systems. With experience spanning system architecture, algorithm development, and Linux-based optimization, I've led and delivered performance-critical solutions across a range of technical projects.
+              From developing sensor algorithms for autonomous navigation to integrating Bluetooth systems with real-time laser detection, my work emphasizes efficient design, reliability, and low-latency performance. 
+              I bring a bias for action, a commitment to continuous learning, and a results-driven mindset shaped by high-stakes environments.
+              </p>
+              <button class="edit-button">Edit</button>
+            </div>
+            
+            <h3>Resume</h3>
+            <div id="resume-container">
+              <p id="resume-link">No resume uploaded yet</p>
+            </div>
+            <div class="upload-section">
+              <p>Upload your resume (Max: 10MB, PDF only)</p>
+              <input type="file" accept="application/pdf" id="resume-upload">
+              <button class="upload-btn">Upload</button>
+            </div>
           </div>
-          
-          <h3>Evaluations</h3>
-          <ul class="document-list">
-            <li>No evaluations uploaded yet</li>
-          </ul>
-          <div class="upload-section">
-            <p>Upload evaluation documents (Max: 20MB, PDF, JPEG, or PNG)</p>
-            <input type="file" accept="application/pdf,image/jpeg,image/jpg,image/png" id="eval-upload">
-            <button class="upload-btn">Upload</button>
+        </section>
+        
+        <section id="contact">
+          <h2>Contact Me</h2>
+          <div class="card">
+            <h3>Get In Touch</h3>
+            <p>If you'd like to connect or have any questions, feel free to reach out to me directly:</p>
+            <div class="contact-info">
+              <a href="mailto:akashp3128@gmail.com" class="email-link">akashp3128@gmail.com</a>
+            </div>
           </div>
-        </div>
-      </section>
-      
-      <section id="resume">
-        <h2>Resume</h2>
-        <div class="card">
-          <h3>Work Experience</h3>
-          <div class="editable-content" data-content-id="work-experience">
-            <p>
-            I'm a software engineer with a strong foundation in C++11, Python, embedded systems, and real-time operating systems. With experience spanning system architecture, algorithm development, and Linux-based optimization, I've led and delivered performance-critical solutions across a range of technical projects.
-            From developing sensor algorithms for autonomous navigation to integrating Bluetooth systems with real-time laser detection, my work emphasizes efficient design, reliability, and low-latency performance. 
-            I bring a bias for action, a commitment to continuous learning, and a results-driven mindset shaped by high-stakes environments.
-            </p>
-            <button class="edit-button">Edit</button>
-          </div>
-          
-          <h3>Resume</h3>
-          <div id="resume-container">
-            <p id="resume-link">No resume uploaded yet</p>
-          </div>
-          <div class="upload-section">
-            <p>Upload your resume (Max: 10MB, PDF only)</p>
-            <input type="file" accept="application/pdf" id="resume-upload">
-            <button class="upload-btn">Upload</button>
-          </div>
-        </div>
-      </section>
-      
-      <section id="contact">
-        <h2>Contact Me</h2>
-        <div class="card">
-          <h3>Get In Touch</h3>
-          <p>If you'd like to connect or have any questions, feel free to reach out to me directly:</p>
-          <div class="contact-info">
-            <a href="mailto:akashp3128@gmail.com" class="email-link">akashp3128@gmail.com</a>
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
-  </div>
+  </main>
 
   <footer>
     <div class="container" style="max-width: 600px; padding: 0 1rem;">
@@ -1949,5 +2029,8 @@
       });
     }
   </script>
+  
+  <!-- Stock Ticker Script -->
+  <script src="public/js/isolated-stock-ticker.js"></script>
 </body>
 </html> 
