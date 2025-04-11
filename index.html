@@ -1207,6 +1207,8 @@
         const section = this.closest('section').id;
         let fileType;
         
+        console.log(`Upload initiated from section: ${section}`);
+        
         // Check if the upload service is available
         try {
           this.textContent = 'Checking service...';
@@ -1261,17 +1263,25 @@
           return;
         }
         
-        // Determine file type based on section
-        if (section === 'navy') {
+        // Determine file type based on section and input id
+        const inputId = input.id;
+        if (inputId === 'eval-upload') {
           fileType = 'eval';
-        } else if (section === 'resume') {
+        } else if (inputId === 'resume-upload') {
           fileType = 'resume';
-        } else if (section === 'about') {
+        } else if (inputId === 'photo-upload') {
           fileType = 'photo';
+        } else {
+          console.error('Unknown input ID:', inputId);
+          alert('Error: Unknown upload type. Please contact support.');
+          return;
         }
+        
+        console.log(`Determined file type: ${fileType} from input ID: ${inputId}`);
         
         if (input.files.length > 0) {
           const file = input.files[0];
+          console.log(`File selected for upload: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
           
           // Create FormData
           const formData = new FormData();
@@ -1283,7 +1293,8 @@
             this.textContent = 'Uploading...';
             this.disabled = true;
             
-            // Upload to Cloudflare Worker
+            // Upload to endpoint
+            console.log(`Sending file to endpoint: ${UPLOAD_ENDPOINT}`);
             const response = await fetch(UPLOAD_ENDPOINT, {
               method: 'POST',
               body: formData,
@@ -1298,6 +1309,7 @@
             
             if (response.ok) {
               const result = await response.json();
+              console.log('Upload successful:', result);
               
               // Handle successful upload
               if (fileType === 'photo') {

@@ -39,6 +39,7 @@ export default {
     if (request.method === 'GET' && path !== '/') {
       // Remove the leading slash
       const key = path.substring(1);
+      console.log(`Retrieving file: ${key}`);
       
       try {
         // Get the object from R2
@@ -46,8 +47,18 @@ export default {
         
         // If the object doesn't exist, return 404
         if (object === null) {
-          return new Response('Not Found', { status: 404 });
+          console.error(`File not found: ${key}`);
+          return new Response('File Not Found', { 
+            status: 404,
+            headers: {
+              'Content-Type': 'text/plain',
+              'Access-Control-Allow-Origin': '*'
+            }
+          });
         }
+        
+        // Log the retrieved file details
+        console.log(`File found: ${key}, size: ${object.size}, metadata:`, object.httpMetadata);
         
         // Determine content type based on filename or use the stored metadata
         let contentType = object.httpMetadata?.contentType || 'application/octet-stream';
@@ -58,6 +69,8 @@ export default {
         } else if (key.endsWith('.png')) {
           contentType = 'image/png';
         }
+        
+        console.log(`Serving file with content type: ${contentType}`);
         
         // Return the file with proper headers
         return new Response(object.body, {
@@ -70,7 +83,13 @@ export default {
         });
       } catch (error) {
         console.error('Error serving file:', error);
-        return new Response('Internal Server Error', { status: 500 });
+        return new Response('Internal Server Error: ' + error.message, { 
+          status: 500,
+          headers: {
+            'Content-Type': 'text/plain',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
       }
     }
 
@@ -110,32 +129,43 @@ export default {
 
       // Validate content type
       if (!ALLOWED_FILE_TYPES[type].includes(file.type)) {
+        console.error(`Invalid file type: ${file.type} for type ${type}. Allowed types: ${ALLOWED_FILE_TYPES[type].join(', ')}`);
         return jsonResponse({ 
-          error: `Invalid file type. Allowed types: ${ALLOWED_FILE_TYPES[type].join(', ')}` 
+          error: `Invalid file type: ${file.type}. Allowed types: ${ALLOWED_FILE_TYPES[type].join(', ')}` 
         }, 400, origin);
       }
 
       // Generate a unique filename with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `${type}/${timestamp}-${file.name}`;
+      
+      console.log(`Uploading file: ${filename}, type: ${file.type}, size: ${file.size} bytes`);
 
-      // Upload file to R2
-      await env.RESUME_BUCKET.put(filename, file.stream(), {
-        httpMetadata: {
-          contentType: file.type,
-        },
-      });
+      try {
+        // Upload file to R2
+        await env.RESUME_BUCKET.put(filename, file.stream(), {
+          httpMetadata: {
+            contentType: file.type,
+          },
+        });
+        
+        // Generate a URL for the uploaded file using the worker URL instead of the public R2 URL
+        const fileUrl = `${WORKER_URL}/${filename}`;
+        console.log(`File uploaded successfully: ${fileUrl}`);
 
-      // Generate a URL for the uploaded file using the worker URL instead of the public R2 URL
-      const fileUrl = `${WORKER_URL}/${filename}`;
-
-      // Return success response
-      return jsonResponse({
-        success: true,
-        message: 'File uploaded successfully',
-        filename,
-        url: fileUrl
-      }, 200, origin);
+        // Return success response
+        return jsonResponse({
+          success: true,
+          message: 'File uploaded successfully',
+          filename,
+          url: fileUrl
+        }, 200, origin);
+      } catch (uploadError) {
+        console.error('Error uploading to R2:', uploadError);
+        return jsonResponse({ 
+          error: 'Upload to storage failed: ' + uploadError.message 
+        }, 500, origin);
+      }
 
     } catch (error) {
       console.error('Upload error:', error);
