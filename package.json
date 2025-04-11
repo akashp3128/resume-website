@@ -1,0 +1,11 @@
+{
+  "name": "akash-resume-website",
+  "version": "1.0.0",
+  "description": "Akash Patel's professional resume website",
+  "main": "index.html",
+  "scripts": {
+    "build": "echo 'No build step required'"
+  },
+  "author": "Akash Patel",
+  "license": "MIT"
+} 
