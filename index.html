@@ -916,6 +916,94 @@
       border: 1px solid #eee;
       cursor: pointer;
     }
+
+    /* Stock Ticker Styles */
+    .stock-ticker-container {
+      width: 100%;
+      background-color: #000;
+      overflow: hidden;
+      position: relative;
+      height: 40px;
+      margin-bottom: var(--spacing-md);
+    }
+
+    .stock-ticker-wrapper {
+      width: 100%;
+      overflow: hidden;
+      position: relative;
+      height: 100%;
+    }
+
+    .stock-ticker {
+      white-space: nowrap;
+      position: absolute;
+      left: 0;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      animation: ticker 30s linear infinite;
+      padding-left: 100%;
+      padding-right: 100%;
+      width: auto;
+    }
+
+    .stock-ticker:hover {
+      animation-play-state: paused;
+    }
+
+    .stock-item {
+      display: inline-flex;
+      align-items: center;
+      margin: 0 20px;
+      color: white;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+    }
+
+    .stock-symbol {
+      color: var(--accent-color);
+    }
+
+    .stock-price {
+      margin: 0 8px;
+    }
+
+    .stock-change {
+      padding: 0 5px;
+      border-radius: 3px;
+      font-size: 0.9em;
+    }
+
+    .stock-change.positive {
+      color: #00ff00;
+    }
+
+    .stock-change.negative {
+      color: #ff0000;
+    }
+
+    .loading {
+      color: var(--accent-color);
+      width: 100%;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    @keyframes ticker {
+      0% {
+        transform: translateX(0);
+      }
+      100% {
+        transform: translateX(-100%);
+      }
+    }
+
+    /* Dark mode adjustments for stock ticker */
+    .dark-mode .stock-ticker-container {
+      background-color: #111;
+      border-top: 1px solid #333;
+      border-bottom: 1px solid #333;
+    }
   </style>
   
   <!-- Admin Login Modal -->
@@ -1030,6 +1118,16 @@
     </div>
   </header>
 
+  <!-- Stock Ticker -->
+  <div class="stock-ticker-container">
+    <div class="stock-ticker-wrapper">
+      <div class="stock-ticker" id="stock-ticker">
+        <!-- Stock data will be loaded here dynamically -->
+        <div class="loading">Loading market data...</div>
+      </div>
+    </div>
+  </div>
+
   <div class="container">
     <div id="admin-controls">
       <button id="logout-btn" class="action-btn">
@@ -1084,16 +1182,6 @@
               These roles demanded adaptability, teamwork, and a commitment to mission success in both forward-deployed and stateside environments.Throughout my service, I received commendations for leadership and performance, and I was meritoriously advanced to the rank of HT2. My Navy career instilled in me a deep sense of discipline, resilience, and the ability to lead and support teams in high-stakes situations.
             </p>
             <button class="edit-button">Edit</button>
-          </div>
-          
-          <h3>Evaluations</h3>
-          <ul class="document-list">
-            <li>No evaluations uploaded yet</li>
-          </ul>
-          <div class="upload-section">
-            <p>Upload evaluation documents (Max: 20MB, PDF, JPEG, or PNG)</p>
-            <input type="file" accept="application/pdf,image/jpeg,image/jpg,image/png" id="eval-upload">
-            <button class="upload-btn">Upload</button>
           </div>
         </div>
       </section>
@@ -1151,803 +1239,59 @@
   </div>
 
   <script>
-    // Add keydown listener for Alt+T to show upload test button
-    document.addEventListener('keydown', function(e) {
-      if (e.altKey && e.key === 't') {
-        const testButton = document.createElement('button');
-        testButton.innerText = 'Test Upload Service';
-        testButton.style.position = 'fixed';
-        testButton.style.top = '10px';
-        testButton.style.right = '10px';
-        testButton.style.zIndex = '9999';
-        testButton.style.padding = '10px';
-        testButton.style.backgroundColor = '#ffff00';
-        testButton.style.color = '#000';
-        testButton.style.border = '1px solid #000';
-        testButton.style.borderRadius = '5px';
-        
-        testButton.addEventListener('click', async function() {
-          console.log('Testing upload service...');
-          
-          // Create status message
-          const statusDiv = document.createElement('div');
-          statusDiv.style.position = 'fixed';
-          statusDiv.style.top = '50px';
-          statusDiv.style.right = '10px';
-          statusDiv.style.zIndex = '9999';
-          statusDiv.style.padding = '10px';
-          statusDiv.style.backgroundColor = '#f0f0f0';
-          statusDiv.style.border = '1px solid #ccc';
-          statusDiv.style.borderRadius = '5px';
-          statusDiv.style.maxWidth = '300px';
-          statusDiv.style.maxHeight = '400px';
-          statusDiv.style.overflow = 'auto';
-          document.body.appendChild(statusDiv);
-          
-          const addStatus = (message) => {
-            console.log(message);
-            const p = document.createElement('p');
-            p.innerText = message;
-            statusDiv.appendChild(p);
-            statusDiv.scrollTop = statusDiv.scrollHeight;
-          };
-          
-          // Test primary endpoint
-          addStatus('1. Testing primary endpoint connection...');
-          try {
-            const primaryResponse = await fetch(PRIMARY_UPLOAD_ENDPOINT, {
-              method: 'OPTIONS',
-              headers: {
-                'Origin': currentOrigin
-              }
-            });
-            
-            if (primaryResponse.ok) {
-              addStatus('✅ Primary endpoint is responding');
-            } else {
-              addStatus(`❌ Primary endpoint error: ${primaryResponse.status} ${primaryResponse.statusText}`);
-            }
-          } catch (error) {
-            addStatus(`❌ Primary endpoint connection failed: ${error.message}`);
-          }
-          
-          // Test fallback endpoint
-          addStatus('2. Testing fallback endpoint connection...');
-          try {
-            const fallbackResponse = await fetch(FALLBACK_UPLOAD_ENDPOINT, {
-              method: 'OPTIONS',
-              headers: {
-                'Origin': currentOrigin
-              }
-            });
-            
-            if (fallbackResponse.ok) {
-              addStatus('✅ Fallback endpoint is responding');
-            } else {
-              addStatus(`❌ Fallback endpoint error: ${fallbackResponse.status} ${fallbackResponse.statusText}`);
-            }
-          } catch (error) {
-            addStatus(`❌ Fallback endpoint connection failed: ${error.message}`);
-          }
-          
-          // Create a test file for upload
-          addStatus('3. Creating test file for upload...');
-          const testBlob = new Blob(['Test file content'], { type: 'text/plain' });
-          const testFile = new File([testBlob], 'test.txt', { type: 'text/plain' });
-          
-          // Create FormData
-          const formData = new FormData();
-          formData.append('file', testFile);
-          formData.append('type', 'photo');  // Use photo type since it accepts more formats
-          
-          // Try upload to fallback endpoint first (more likely to work)
-          addStatus('4. Attempting upload to fallback endpoint...');
-          try {
-            const uploadResponse = await fetch(FALLBACK_UPLOAD_ENDPOINT, {
-              method: 'POST',
-              body: formData,
-              headers: {
-                'Origin': currentOrigin
-              }
-            });
-            
-            if (uploadResponse.ok) {
-              const result = await uploadResponse.json();
-              addStatus(`✅ Upload succeeded: ${JSON.stringify(result)}`);
-            } else {
-              try {
-                const errorData = await uploadResponse.json();
-                addStatus(`❌ Upload failed: ${JSON.stringify(errorData)}`);
-              } catch (e) {
-                addStatus(`❌ Upload failed with status: ${uploadResponse.status} ${uploadResponse.statusText}`);
-              }
-            }
-          } catch (error) {
-            addStatus(`❌ Upload attempt failed: ${error.message}`);
-          }
-          
-          // Add close button
-          const closeButton = document.createElement('button');
-          closeButton.innerText = 'Close';
-          closeButton.style.marginTop = '10px';
-          closeButton.addEventListener('click', function() {
-            statusDiv.remove();
-          });
-          statusDiv.appendChild(closeButton);
-        });
-        
-        document.body.appendChild(testButton);
-      }
-    });
-    
-    // Configure upload endpoints
-    const PRIMARY_UPLOAD_ENDPOINT = 'https://resume-file-uploader.akashp3128.workers.dev';
-    const FALLBACK_UPLOAD_ENDPOINT = 'http://localhost:8001';
-    let UPLOAD_ENDPOINT = PRIMARY_UPLOAD_ENDPOINT;
-    let currentOrigin = window.location.origin;
-    
-    // For local testing on localhost, default to the fallback endpoint
-    if (currentOrigin.includes('localhost')) {
-      UPLOAD_ENDPOINT = FALLBACK_UPLOAD_ENDPOINT;
-    }
-    
-    // File size limits (matching server configuration)
-    const MAX_SIZES = {
-      resume: 10 * 1024 * 1024,  // 10MB
-      eval: 20 * 1024 * 1024,    // 20MB
-      photo: 10 * 1024 * 1024    // 10MB
-    };
-    
-    console.log('Page loaded. Origins:', {
-      primary: PRIMARY_UPLOAD_ENDPOINT,
-      fallback: FALLBACK_UPLOAD_ENDPOINT,
-      current: currentOrigin
-    });
-    
-    // Handle file uploads
-    document.querySelectorAll('.upload-btn').forEach(button => {
-      button.addEventListener('click', async function() {
-        const input = this.previousElementSibling;
-        const section = this.closest('section').id;
-        let fileType;
-        
-        console.log(`Upload initiated from section: ${section}`);
-        
-        // Check if the upload service is available
-        try {
-          this.textContent = 'Checking service...';
-          this.disabled = true;
-          
-          // Try primary endpoint
-          try {
-            const statusCheck = await fetch(PRIMARY_UPLOAD_ENDPOINT, {
-              method: 'OPTIONS',
-              headers: {
-                'Origin': currentOrigin
-              }
-            });
-            
-            if (statusCheck.ok) {
-              UPLOAD_ENDPOINT = PRIMARY_UPLOAD_ENDPOINT;
-              console.log('Using primary upload endpoint');
-            } else {
-              throw new Error('Primary endpoint returned error');
-            }
-          } catch (error) {
-            console.warn('Primary upload endpoint unavailable:', error);
-            
-            // Try fallback endpoint
-            try {
-              const fallbackCheck = await fetch(FALLBACK_UPLOAD_ENDPOINT, {
-                method: 'OPTIONS',
-                headers: {
-                  'Origin': currentOrigin
-                }
-              });
-              
-              if (fallbackCheck.ok) {
-                UPLOAD_ENDPOINT = FALLBACK_UPLOAD_ENDPOINT;
-                console.log('Using fallback upload endpoint');
-              } else {
-                throw new Error('Fallback endpoint returned error');
-              }
-            } catch (fallbackError) {
-              console.error('Fallback upload endpoint also unavailable:', fallbackError);
-              throw new Error('All upload services unavailable');
-            }
-          }
-          
-          this.textContent = 'Upload';
-          this.disabled = false;
-        } catch (error) {
-          console.error('Service check failed:', error);
-          this.textContent = 'Upload';
-          this.disabled = false;
-          alert('Upload service is currently unavailable. Please try again later or contact support.');
-          return;
-        }
-        
-        // Determine file type based on section and input id
-        const inputId = input.id;
-        if (inputId === 'eval-upload') {
-          fileType = 'eval';
-        } else if (inputId === 'resume-upload') {
-          fileType = 'resume';
-        } else if (inputId === 'photo-upload') {
-          fileType = 'photo';
-        } else {
-          console.error('Unknown input ID:', inputId);
-          alert('Error: Unknown upload type. Please contact support.');
-          return;
-        }
-        
-        console.log(`Determined file type: ${fileType} from input ID: ${inputId}`);
-        
-        if (input.files.length > 0) {
-          const file = input.files[0];
-          console.log(`File selected for upload: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
-          
-          // Create FormData
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('type', fileType);
-          
-          try {
-            // Show loading indicator
-            this.textContent = 'Uploading...';
-            this.disabled = true;
-            
-            // Upload to endpoint
-            console.log(`Sending file to endpoint: ${UPLOAD_ENDPOINT}`);
-            const response = await fetch(UPLOAD_ENDPOINT, {
-              method: 'POST',
-              body: formData,
-              headers: {
-                'Origin': currentOrigin
-              }
-            });
-            
-            // Reset button state
-            this.textContent = 'Upload';
-            this.disabled = false;
-            
-            if (response.ok) {
-              const result = await response.json();
-              console.log('Upload successful:', result);
-              
-              // Handle successful upload
-              if (fileType === 'photo') {
-                // Photo upload success handler
-                const photoContainer = this.closest('.card').querySelector('.photo-container');
-                
-                // Save the photo URL to localStorage so it persists across sessions
-                localStorage.setItem('uploaded-photo-url', result.url);
-                
-                // Check if we already have an image displayed from the change event
-                if (photoContainer.querySelector('img')) {
-                  // Just update the image src to point to the uploaded URL
-                  const img = photoContainer.querySelector('img');
-                  img.src = result.url;
-                } else {
-                  // Create a new image element
-                  photoContainer.innerHTML = '';
-                  const img = document.createElement('img');
-                  img.src = result.url;
-                  img.alt = "Uploaded photo";
-                  photoContainer.appendChild(img);
-                }
-                
-                alert('Photo uploaded successfully!');
-              } else if (fileType === 'resume') {
-                // Save the resume URL to localStorage so it persists across sessions
-                localStorage.setItem('uploaded-resume-url', result.url);
-                localStorage.setItem('uploaded-resume-filename', file.name);
-                
-                // Display the PDF with a fallback to download option
-                displayResume(result.url, file.name);
-                alert('Resume uploaded successfully!');
-              } else if (fileType === 'eval') {
-                // For evaluations (which have a list)
-                const listElement = this.closest('.card').querySelector('ul');
-                if (listElement.innerHTML.includes('No evaluations uploaded yet')) {
-                  listElement.innerHTML = '';
-                }
-                
-                const li = document.createElement('li');
-                
-                // Check if it's an image or PDF
-                const isImage = file.name.toLowerCase().endsWith('.jpg') || 
-                                file.name.toLowerCase().endsWith('.jpeg') || 
-                                file.name.toLowerCase().endsWith('.png');
-                
-                if (isImage) {
-                  // Create thumbnail for images
-                  const thumbnail = document.createElement('img');
-                  thumbnail.src = result.url;
-                  thumbnail.alt = file.name;
-                  thumbnail.className = 'thumbnail';
-                  thumbnail.onclick = function() {
-                    openLightbox(result.url);
-                  };
-                  li.appendChild(thumbnail);
-                }
-                
-                const a = document.createElement('a');
-                a.href = result.url;
-                a.target = '_blank';
-                a.textContent = file.name;
-                li.appendChild(a);
-                
-                listElement.appendChild(li);
-                
-                // Save eval to localStorage
-                const savedEvals = JSON.parse(localStorage.getItem('uploaded-evals') || '[]');
-                savedEvals.push({
-                  url: result.url,
-                  name: file.name
-                });
-                localStorage.setItem('uploaded-evals', JSON.stringify(savedEvals));
-                
-                // Show appropriate success message based on file type
-                if (fileType === 'resume' || fileType === 'eval') {
-                  alert('Document uploaded successfully!');
-                }
-              }
-            } else {
-              const errorData = await response.json();
-              const errorMessage = errorData.error || 'Unknown error';
-              
-              // Provide more helpful error messages
-              if (errorMessage.includes('Invalid file type')) {
-                if (fileType === 'photo') {
-                  alert('Upload failed: Please select a JPEG or PNG image file. Some browsers label JPEG files as "image/jpg" while others use "image/jpeg" - both are supported.');
-                } else {
-                  alert(`Upload failed: ${errorMessage}`);
-                }
-              } else if (errorMessage.includes('exceeds maximum size')) {
-                alert(`Upload failed: Your file is too large. Maximum size for ${fileType} is ${MAX_SIZES[fileType]/(1024*1024)}MB.`);
-              } else {
-                alert(`Upload failed: ${errorMessage}`);
-              }
-            }
-          } catch (error) {
-            // Reset button state
-            this.textContent = 'Upload';
-            this.disabled = false;
-            
-            console.error('Upload error:', error);
-            const errorDetails = error.message || 'Unknown error';
-            alert(`Upload failed: ${errorDetails}. Please check the console for more details.`);
-            
-            // Log additional debugging information
-            console.log('File details:', file.name, file.type, file.size);
-            console.log('Upload endpoint:', UPLOAD_ENDPOINT);
-          }
-        } else {
-          alert('Please select a file first');
-        }
-      });
-    });
-    
-    // Placeholder for photo upload preview
-    document.getElementById('photo-upload').addEventListener('change', function(e) {
-      if (this.files && this.files[0]) {
-        const file = this.files[0];
-        const photoContainer = document.querySelector('.photo-container');
-        
-        // Validate file type
-        const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-        if (!validImageTypes.includes(file.type)) {
-          alert('Please select a valid image file (JPEG, JPG, or PNG)');
-          this.value = '';  // Clear the file input
-          return;
-        }
-        
-        // Validate file size
-        const maxSize = 10 * 1024 * 1024; // 10MB
-        if (file.size > maxSize) {
-          alert('Image is too large. Please select an image under 10MB.');
-          this.value = '';  // Clear the file input
-          return;
-        }
-        
-        // Clear previous content
-        photoContainer.innerHTML = '';
-        
-        // Create image preview
-        const img = document.createElement('img');
-        img.src = URL.createObjectURL(file);
-        img.onload = function() {
-          URL.revokeObjectURL(this.src);
-        }
-        photoContainer.appendChild(img);
-        
-        console.log(`File selected: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
-      }
-    });
-    
-    // Add validation for eval uploads
-    document.getElementById('eval-upload').addEventListener('change', function(e) {
-      if (this.files && this.files[0]) {
-        const file = this.files[0];
-        
-        // Validate file type
-        const validFileTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-        if (!validFileTypes.includes(file.type)) {
-          alert('Please select a valid file type (PDF, JPEG, JPG, or PNG)');
-          this.value = '';  // Clear the file input
-          return;
-        }
-        
-        // Validate file size
-        const maxSize = 20 * 1024 * 1024; // 20MB
-        if (file.size > maxSize) {
-          alert('File is too large. Please select a file under 20MB.');
-          this.value = '';  // Clear the file input
-          return;
-        }
-        
-        console.log(`Eval file selected: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
-      }
-    });
-    
-    // Theme toggle functionality
-    const themeBtn = document.getElementById('theme-btn');
-    themeBtn.addEventListener('click', function() {
+    // JavaScript to toggle dark mode
+    document.getElementById('theme-btn').addEventListener('click', function() {
       document.body.classList.toggle('dark-mode');
       
-      // Update the icon based on theme
-      const icon = themeBtn.querySelector('.btn-icon');
+      // Update the theme icon
+      const themeIcon = this.querySelector('.btn-icon');
       if (document.body.classList.contains('dark-mode')) {
-        icon.textContent = '☾'; // Moon icon for dark mode
-        themeBtn.setAttribute('aria-label', 'Switch to light mode');
-        localStorage.setItem('theme', 'dark');
+        themeIcon.innerHTML = '&#9790;'; // moon symbol
       } else {
-        icon.textContent = '☀'; // Sun icon for light mode
-        themeBtn.setAttribute('aria-label', 'Switch to dark mode');
-        localStorage.setItem('theme', 'light');
+        themeIcon.innerHTML = '&#9728;'; // sun symbol
       }
+      
+      // Save preference to localStorage
+      localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
     });
     
-    // Check for saved theme preference
+    // Check if dark mode is saved in localStorage
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.body.classList.add('dark-mode');
+      document.querySelector('#theme-btn .btn-icon').innerHTML = '&#9790;'; // moon symbol
+    }
+    
+    // Section visibility on scroll
     document.addEventListener('DOMContentLoaded', function() {
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme === 'dark') {
-        document.body.classList.add('dark-mode');
-        const icon = themeBtn.querySelector('.btn-icon');
-        icon.textContent = '☾';
-        themeBtn.setAttribute('aria-label', 'Switch to light mode');
+      // Initially make the first section visible
+      const sections = document.querySelectorAll('section');
+      if (sections.length > 0) {
+        sections[0].classList.add('visible');
       }
       
-      // Load saved uploads from localStorage
-      loadSavedUploads();
-      
-      // Admin login setup
-      setupAdminFunctionality();
-    });
-    
-    // Helper function to display a resume with fallback
-    function displayResume(resumeUrl, filename) {
-      console.log(`Displaying resume: ${resumeUrl}`);
-      const container = document.getElementById('resume-container');
-      
-      // Create the preview container
-      const previewContainer = document.createElement('div');
-      previewContainer.className = 'resume-preview-container';
-      
-      // Create actions bar with download link
-      const actionsDiv = document.createElement('div');
-      actionsDiv.className = 'resume-actions';
-      
-      // Create download link
-      const downloadLink = document.createElement('a');
-      downloadLink.href = resumeUrl;
-      downloadLink.className = 'resume-download-link';
-      downloadLink.textContent = 'Download Resume';
-      downloadLink.target = '_blank';
-      downloadLink.setAttribute('rel', 'noopener');
-      actionsDiv.appendChild(downloadLink);
-      
-      // Add filename display
-      const filenameSpan = document.createElement('span');
-      filenameSpan.textContent = filename;
-      filenameSpan.style.color = '#666';
-      filenameSpan.style.fontSize = '0.9rem';
-      actionsDiv.appendChild(filenameSpan);
-      
-      previewContainer.appendChild(actionsDiv);
-      
-      // Create PDF viewer with error handling
-      const pdfViewer = document.createElement('iframe');
-      pdfViewer.className = 'pdf-viewer';
-      
-      // Add sandbox attribute with necessary permissions for PDF viewing
-      pdfViewer.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms');
-      
-      // Add load and error event handlers
-      pdfViewer.addEventListener('load', function() {
-        console.log('PDF loaded successfully');
-      });
-      
-      pdfViewer.addEventListener('error', function(e) {
-        console.error('PDF loading error:', e);
-        pdfViewer.style.display = 'none';
-        
-        // Add error message
-        const errorMsg = document.createElement('div');
-        errorMsg.style.padding = '1rem';
-        errorMsg.style.border = '1px solid #ff6b6b';
-        errorMsg.style.borderRadius = '4px';
-        errorMsg.style.marginTop = '1rem';
-        errorMsg.style.backgroundColor = '#fff9f9';
-        errorMsg.style.color = '#d63031';
-        errorMsg.innerHTML = `
-          <p style="margin: 0; padding: 0 0 0.5rem 0;"><strong>Unable to display the PDF.</strong></p>
-          <p style="margin: 0; padding: 0;">You can still <a href="${resumeUrl}" target="_blank" style="color: #d63031; text-decoration: underline;">download the file</a> directly.</p>
-        `;
-        previewContainer.appendChild(errorMsg);
-      });
-      
-      // Fix for PDF display issues - make sure the URL is correctly formatted for iframes
-      let iframeSrc = resumeUrl;
-      
-      // If using localhost URL, make sure we're using the correct protocol
-      if (iframeSrc.includes('localhost')) {
-        iframeSrc = iframeSrc.replace('https://', 'http://');
-      }
-      
-      // Add object fallback for browsers with iframe PDF issues
-      const objectFallback = document.createElement('object');
-      objectFallback.data = iframeSrc;
-      objectFallback.type = 'application/pdf';
-      objectFallback.width = '100%';
-      objectFallback.height = '100%';
-      objectFallback.innerHTML = `
-        <p>It appears your browser doesn't support embedded PDFs. 
-        <a href="${iframeSrc}" target="_blank">Click here to download the PDF</a>.</p>
-      `;
-      
-      // Set the source last to make sure handlers are in place
-      pdfViewer.src = iframeSrc;
-      pdfViewer.title = 'Resume PDF';
-      pdfViewer.setAttribute('frameborder', '0');
-      pdfViewer.setAttribute('loading', 'lazy');
-      
-      // Use a wrapper to implement fallback
-      const viewerWrapper = document.createElement('div');
-      viewerWrapper.className = 'pdf-viewer-wrapper';
-      viewerWrapper.style.width = '100%';
-      viewerWrapper.style.height = '600px';
-      viewerWrapper.appendChild(pdfViewer);
-      
-      previewContainer.appendChild(viewerWrapper);
-      
-      // Clear container and add new elements
-      container.innerHTML = '';
-      container.appendChild(previewContainer);
-      
-      // Try alternative embedding method if browser is likely to block iframes
-      setTimeout(() => {
-        if (!pdfViewer.contentDocument || pdfViewer.contentDocument.body.innerHTML === '') {
-          console.log('PDF iframe may be blocked, trying object fallback');
-          viewerWrapper.innerHTML = '';
-          viewerWrapper.appendChild(objectFallback);
-        }
-      }, 1000);
-    }
-    
-    // Load previously uploaded files from localStorage
-    function loadSavedUploads() {
-      // Load photo if exists
-      const photoUrl = localStorage.getItem('uploaded-photo-url');
-      if (photoUrl) {
-        const photoContainer = document.querySelector('.photo-container');
-        photoContainer.innerHTML = '';
-        const img = document.createElement('img');
-        img.src = photoUrl;
-        img.alt = "Uploaded photo";
-        photoContainer.appendChild(img);
-      }
-      
-      // Load resume if exists
-      const resumeUrl = localStorage.getItem('uploaded-resume-url');
-      const resumeFilename = localStorage.getItem('uploaded-resume-filename');
-      if (resumeUrl && resumeFilename) {
-        displayResume(resumeUrl, resumeFilename);
-      }
-      
-      // Load evaluations if exist
-      const savedEvals = JSON.parse(localStorage.getItem('uploaded-evals') || '[]');
-      if (savedEvals.length > 0) {
-        const listElement = document.querySelector('#navy .document-list');
-        listElement.innerHTML = '';
-        
-        savedEvals.forEach(eval => {
-          const li = document.createElement('li');
-          
-          // Check if it's an image or PDF
-          const isImage = eval.url.toLowerCase().endsWith('.jpg') || 
-                          eval.url.toLowerCase().endsWith('.jpeg') || 
-                          eval.url.toLowerCase().endsWith('.png');
-          
-          if (isImage) {
-            // Create thumbnail for images
-            const thumbnail = document.createElement('img');
-            thumbnail.src = eval.url;
-            thumbnail.alt = eval.name;
-            thumbnail.className = 'thumbnail';
-            thumbnail.onclick = function() {
-              openLightbox(eval.url);
-            };
-            li.appendChild(thumbnail);
-          }
-          
-          const a = document.createElement('a');
-          a.href = eval.url;
-          a.target = '_blank';
-          a.textContent = eval.name;
-          li.appendChild(a);
-          
-          listElement.appendChild(li);
-        });
-      }
-    }
-    
-    // Lightbox functionality
-    const lightbox = document.getElementById('image-lightbox');
-    const lightboxImg = document.getElementById('lightbox-img');
-    const lightboxClose = document.querySelector('.lightbox-close');
-    
-    function openLightbox(imgSrc) {
-      lightboxImg.src = imgSrc;
-      lightbox.style.display = 'flex';
-    }
-    
-    lightboxClose.addEventListener('click', function() {
-      lightbox.style.display = 'none';
-    });
-    
-    // Close lightbox when clicking outside the image
-    lightbox.addEventListener('click', function(e) {
-      if (e.target === lightbox) {
-        lightbox.style.display = 'none';
-      }
-    });
-    
-    // Admin functionality
-    function setupAdminFunctionality() {
-      // Get DOM elements
-      const adminModal = document.getElementById('admin-modal');
-      const closeModal = document.querySelector('.close');
-      const adminLoginForm = document.getElementById('admin-login-form');
-      const logoutBtn = document.getElementById('logout-btn');
-      const editButtons = document.querySelectorAll('.edit-button');
-      const adminLoginTrigger = document.getElementById('admin-login-trigger');
-      
-      // Implement scroll animations
+      // Set up intersection observer for scroll animations
       const observerOptions = {
         root: null,
         rootMargin: '0px',
         threshold: 0.1
       };
       
-      const observer = new IntersectionObserver((entries, observer) => {
+      const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             entry.target.classList.add('visible');
-            observer.unobserve(entry.target); // Stop observing once animation is triggered
           }
         });
       }, observerOptions);
       
       // Observe all sections
-      document.querySelectorAll('section').forEach(section => {
+      sections.forEach(section => {
         observer.observe(section);
       });
-      
-      // Check if user is already logged in
-      const isLoggedIn = localStorage.getItem('adminLoggedIn') === 'true';
-      if (isLoggedIn) {
-        document.body.classList.add('admin-logged-in');
-      }
-      
-      // Show modal when admin trigger is clicked
-      adminLoginTrigger.addEventListener('click', function() {
-        adminModal.style.display = 'block';
-      });
-      
-      // Close the modal when clicking the x
-      closeModal.addEventListener('click', function() {
-        adminModal.style.display = 'none';
-      });
-      
-      // Close modal when clicking outside of it
-      window.addEventListener('click', function(e) {
-        if (e.target === adminModal) {
-          adminModal.style.display = 'none';
-        }
-      });
-      
-      // Handle admin login
-      adminLoginForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const password = document.getElementById('password').value;
-        // Simple password verification - in a real app, you'd use a secure API
-        if (password === 'admin123') { // Change this to your desired password
-          document.body.classList.add('admin-logged-in');
-          localStorage.setItem('adminLoggedIn', 'true');
-          adminModal.style.display = 'none';
-          alert('Logged in as admin. You can now edit content.');
-        } else {
-          alert('Incorrect password');
-        }
-        
-        this.reset();
-      });
-      
-      // Handle logout
-      logoutBtn.addEventListener('click', function() {
-        document.body.classList.remove('admin-logged-in');
-        localStorage.removeItem('adminLoggedIn');
-        alert('Logged out successfully');
-      });
-      
-      // Handle content editing
-      editButtons.forEach(button => {
-        button.addEventListener('click', function() {
-          const contentContainer = this.parentElement;
-          const contentId = contentContainer.getAttribute('data-content-id');
-          const paragraphElement = contentContainer.querySelector('p');
-          const currentContent = paragraphElement.innerHTML.trim();
-          
-          // Create textarea for editing
-          const textarea = document.createElement('textarea');
-          textarea.className = 'content-edit-area';
-          textarea.value = currentContent;
-          
-          // Create save button
-          const saveButton = document.createElement('button');
-          saveButton.className = 'submit-btn';
-          saveButton.style.marginTop = '10px';
-          saveButton.textContent = 'Save Changes';
-          
-          // Hide paragraph and edit button, show textarea and save button
-          paragraphElement.style.display = 'none';
-          this.style.display = 'none';
-          contentContainer.appendChild(textarea);
-          contentContainer.appendChild(saveButton);
-          
-          // Handle saving changes
-          saveButton.addEventListener('click', function() {
-            const newContent = textarea.value.trim();
-            paragraphElement.innerHTML = newContent;
-            
-            // Save to localStorage
-            localStorage.setItem(`content-${contentId}`, newContent);
-            
-            // Remove editing elements, show original elements
-            paragraphElement.style.display = 'block';
-            button.style.display = 'inline-block';
-            textarea.remove();
-            saveButton.remove();
-            
-            alert('Content saved successfully');
-          });
-        });
-      });
-      
-      // Load saved content from localStorage
-      document.querySelectorAll('.editable-content').forEach(container => {
-        const contentId = container.getAttribute('data-content-id');
-        const paragraphElement = container.querySelector('p');
-        
-        const savedContent = localStorage.getItem(`content-${contentId}`);
-        if (savedContent) {
-          paragraphElement.innerHTML = savedContent;
-        }
-      });
-    }
+    });
   </script>
+  
+  <!-- Stock Ticker JavaScript -->
+  <script src="/public/js/stock-ticker.js"></script>
 </body>
 </html> 
