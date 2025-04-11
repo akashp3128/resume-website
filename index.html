@@ -977,8 +977,8 @@
             <p>No photo uploaded yet</p>
           </div>
           <div class="upload-section">
-            <p>Upload a photo in uniform (Max: 5MB, PNG/JPG)</p>
-            <input type="file" accept="image/png,image/jpeg" id="photo-upload">
+            <p>Upload a photo in uniform (Max: 10MB, JPEG/JPG/PNG)</p>
+            <input type="file" accept="image/png,image/jpeg,image/jpg" id="photo-upload">
             <button class="upload-btn">Upload</button>
           </div>
           
@@ -1187,6 +1187,13 @@
     let UPLOAD_ENDPOINT = PRIMARY_UPLOAD_ENDPOINT;
     let currentOrigin = window.location.origin;
     
+    // File size limits (matching server configuration)
+    const MAX_SIZES = {
+      resume: 10 * 1024 * 1024,  // 10MB
+      eval: 20 * 1024 * 1024,    // 20MB
+      photo: 10 * 1024 * 1024    // 10MB
+    };
+    
     console.log('Page loaded. Origins:', {
       primary: PRIMARY_UPLOAD_ENDPOINT,
       fallback: FALLBACK_UPLOAD_ENDPOINT,
@@ -1294,71 +1301,101 @@
               
               // Handle successful upload
               if (fileType === 'photo') {
-                // Photo already previewed via the change event handler
-                alert('Photo uploaded successfully!');
-              } else if (fileType === 'resume' || fileType === 'eval') {
-                // Update the document list
-                if (fileType === 'resume') {
-                  // For resume, display the PDF directly
-                  const container = document.getElementById('resume-container');
-                  
-                  // Create the preview container
-                  const previewContainer = document.createElement('div');
-                  previewContainer.className = 'resume-preview-container';
-                  
-                  // Create actions bar with download link
-                  const actionsDiv = document.createElement('div');
-                  actionsDiv.className = 'resume-actions';
-                  
-                  // Create download link
-                  const downloadLink = document.createElement('a');
-                  downloadLink.href = result.url;
-                  downloadLink.className = 'resume-download-link';
-                  downloadLink.textContent = 'Download Resume';
-                  downloadLink.target = '_blank';
-                  actionsDiv.appendChild(downloadLink);
-                  
-                  // Add filename display
-                  const filenameSpan = document.createElement('span');
-                  filenameSpan.textContent = file.name;
-                  filenameSpan.style.color = '#666';
-                  filenameSpan.style.fontSize = '0.9rem';
-                  actionsDiv.appendChild(filenameSpan);
-                  
-                  previewContainer.appendChild(actionsDiv);
-                  
-                  // Create PDF viewer
-                  const pdfViewer = document.createElement('iframe');
-                  pdfViewer.className = 'pdf-viewer';
-                  pdfViewer.src = result.url;
-                  pdfViewer.title = 'Resume PDF';
-                  pdfViewer.setAttribute('frameborder', '0');
-                  pdfViewer.setAttribute('loading', 'lazy');
-                  
-                  previewContainer.appendChild(pdfViewer);
-                  
-                  // Clear container and add new elements
-                  container.innerHTML = '';
-                  container.appendChild(previewContainer);
+                // Photo upload success handler
+                const photoContainer = this.closest('.card').querySelector('.photo-container');
+                
+                // Check if we already have an image displayed from the change event
+                if (photoContainer.querySelector('img')) {
+                  // Just update the image src to point to the uploaded URL
+                  const img = photoContainer.querySelector('img');
+                  img.src = result.url;
                 } else {
-                  // For evaluations (which have a list)
-                  const listElement = this.closest('.card').querySelector('ul');
-                  if (listElement.innerHTML.includes('No evaluations uploaded yet')) {
-                    listElement.innerHTML = '';
-                  }
-                  const li = document.createElement('li');
-                  const a = document.createElement('a');
-                  a.href = result.url;
-                  a.target = '_blank';
-                  a.textContent = file.name;
-                  li.appendChild(a);
-                  listElement.appendChild(li);
+                  // Create a new image element
+                  photoContainer.innerHTML = '';
+                  const img = document.createElement('img');
+                  img.src = result.url;
+                  img.alt = "Uploaded photo";
+                  photoContainer.appendChild(img);
                 }
-                alert('Document uploaded successfully!');
+                
+                alert('Photo uploaded successfully!');
+              } else if (fileType === 'resume') {
+                // For resume, display the PDF directly
+                const container = document.getElementById('resume-container');
+                
+                // Create the preview container
+                const previewContainer = document.createElement('div');
+                previewContainer.className = 'resume-preview-container';
+                
+                // Create actions bar with download link
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'resume-actions';
+                
+                // Create download link
+                const downloadLink = document.createElement('a');
+                downloadLink.href = result.url;
+                downloadLink.className = 'resume-download-link';
+                downloadLink.textContent = 'Download Resume';
+                downloadLink.target = '_blank';
+                actionsDiv.appendChild(downloadLink);
+                
+                // Add filename display
+                const filenameSpan = document.createElement('span');
+                filenameSpan.textContent = file.name;
+                filenameSpan.style.color = '#666';
+                filenameSpan.style.fontSize = '0.9rem';
+                actionsDiv.appendChild(filenameSpan);
+                
+                previewContainer.appendChild(actionsDiv);
+                
+                // Create PDF viewer
+                const pdfViewer = document.createElement('iframe');
+                pdfViewer.className = 'pdf-viewer';
+                pdfViewer.src = result.url;
+                pdfViewer.title = 'Resume PDF';
+                pdfViewer.setAttribute('frameborder', '0');
+                pdfViewer.setAttribute('loading', 'lazy');
+                
+                previewContainer.appendChild(pdfViewer);
+                
+                // Clear container and add new elements
+                container.innerHTML = '';
+                container.appendChild(previewContainer);
+              } else if (fileType === 'eval') {
+                // For evaluations (which have a list)
+                const listElement = this.closest('.card').querySelector('ul');
+                if (listElement.innerHTML.includes('No evaluations uploaded yet')) {
+                  listElement.innerHTML = '';
+                }
+                const li = document.createElement('li');
+                const a = document.createElement('a');
+                a.href = result.url;
+                a.target = '_blank';
+                a.textContent = file.name;
+                li.appendChild(a);
+                listElement.appendChild(li);
+                
+                // Show appropriate success message based on file type
+                if (fileType === 'resume' || fileType === 'eval') {
+                  alert('Document uploaded successfully!');
+                }
               }
             } else {
               const errorData = await response.json();
-              alert(`Upload failed: ${errorData.error || 'Unknown error'}`);
+              const errorMessage = errorData.error || 'Unknown error';
+              
+              // Provide more helpful error messages
+              if (errorMessage.includes('Invalid file type')) {
+                if (fileType === 'photo') {
+                  alert('Upload failed: Please select a JPEG or PNG image file. Some browsers label JPEG files as "image/jpg" while others use "image/jpeg" - both are supported.');
+                } else {
+                  alert(`Upload failed: ${errorMessage}`);
+                }
+              } else if (errorMessage.includes('exceeds maximum size')) {
+                alert(`Upload failed: Your file is too large. Maximum size for ${fileType} is ${MAX_SIZES[fileType]/(1024*1024)}MB.`);
+              } else {
+                alert(`Upload failed: ${errorMessage}`);
+              }
             }
           } catch (error) {
             // Reset button state
@@ -1382,15 +1419,37 @@
     // Placeholder for photo upload preview
     document.getElementById('photo-upload').addEventListener('change', function(e) {
       if (this.files && this.files[0]) {
+        const file = this.files[0];
         const photoContainer = document.querySelector('.photo-container');
+        
+        // Validate file type
+        const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+        if (!validImageTypes.includes(file.type)) {
+          alert('Please select a valid image file (JPEG, JPG, or PNG)');
+          this.value = '';  // Clear the file input
+          return;
+        }
+        
+        // Validate file size
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+          alert('Image is too large. Please select an image under 10MB.');
+          this.value = '';  // Clear the file input
+          return;
+        }
+        
+        // Clear previous content
         photoContainer.innerHTML = '';
         
+        // Create image preview
         const img = document.createElement('img');
-        img.src = URL.createObjectURL(this.files[0]);
+        img.src = URL.createObjectURL(file);
         img.onload = function() {
           URL.revokeObjectURL(this.src);
         }
         photoContainer.appendChild(img);
+        
+        console.log(`File selected: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
       }
     });
     
