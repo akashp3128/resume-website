@@ -1,0 +1,5 @@
+# Redirect all requests to index.html for client-side routing
+/*    /index.html   200
+
+# Handle specific redirects for API endpoints if needed
+/api/upload    https://resume-file-uploader.akashp3128.workers.dev    200 

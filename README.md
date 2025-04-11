@@ -118,4 +118,53 @@ This site is static and can be deployed on any web hosting service.
 
 ## License
 
-MIT 
+MIT
+
+## Cloudflare Deployment
+
+### Deploying to Cloudflare Pages
+
+To deploy this website to Cloudflare Pages:
+
+1. Log in to your Cloudflare Dashboard.
+2. Go to **Workers & Pages** > **Create application** > **Pages**.
+3. Connect your GitHub repository.
+4. Configure the build settings:
+   - Build command: (leave empty, as this is a static site)
+   - Build output directory: `public`
+   - Root directory: (leave empty)
+5. Click **Save and Deploy**.
+
+### Custom Domain Setup
+
+To add your custom domain:
+
+1. Go to the **Custom domains** tab in your Pages project.
+2. Click **Set up a custom domain**.
+3. Enter your domain name (e.g., `akashpatelresume.us`).
+4. Follow the DNS configuration instructions.
+
+### File Upload Functionality
+
+The website uses a Cloudflare Worker to handle file uploads. To deploy the worker:
+
+1. Navigate to the `cloudflare-worker` directory.
+2. Make sure you have [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) installed.
+3. Run:
+   ```bash
+   cd cloudflare-worker
+   wrangler login
+   wrangler deploy
+   ```
+4. Create an R2 bucket named "resume" in your Cloudflare dashboard.
+
+## Stock Ticker Feature
+
+The website includes a real-time stock ticker at the top of the page, which:
+
+- Displays stock information for various symbols including crypto
+- Fetches data from Alpha Vantage API with graceful fallback
+- Automatically enters a fallback mode with mock data if API calls fail
+- Features smooth scrolling animations
+
+If you need to customize the stock symbols, edit the `STOCK_SYMBOLS` array in `public/js/isolated-stock-ticker.js`. 
