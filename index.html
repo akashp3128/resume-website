@@ -924,31 +924,53 @@
     }
     
     .loading {
-      color: #1976d2;
-      background-color: rgba(25, 118, 210, 0.1);
-      padding: 0.5rem;
-      border-radius: 4px;
-      margin-bottom: var(--spacing-sm);
-      font-size: 0.9rem;
       display: flex;
       align-items: center;
+      justify-content: flex-start;
+      padding: 0.5rem 0;
+      color: #555;
     }
     
-    .loading::after {
-      content: '';
-      width: 16px;
-      height: 16px;
-      border: 2px solid #1976d2;
+    .loading::before {
+      content: "";
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      margin-right: 10px;
+      border: 2px solid var(--accent-color);
       border-radius: 50%;
       border-top-color: transparent;
-      margin-left: 10px;
-      animation: spinner 1s linear infinite;
+      animation: spin 1s linear infinite;
     }
     
-    @keyframes spinner {
-      to {
-        transform: rotate(360deg);
-      }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .success {
+      padding: 0.5rem 0;
+      color: #28a745;
+      font-weight: bold;
+    }
+    
+    .error {
+      padding: 0.5rem 0;
+      color: #dc3545;
+      font-weight: bold;
+    }
+    
+    .file-link {
+      margin-top: 0.5rem;
+    }
+    
+    .file-link a {
+      color: var(--accent-color);
+      text-decoration: none;
+      font-weight: bold;
+    }
+    
+    .file-link a:hover {
+      text-decoration: underline;
     }
   </style>
   
@@ -1402,9 +1424,8 @@
 
     // File upload functionality
     document.addEventListener('DOMContentLoaded', function() {
-      // Direct Upload endpoint URL - this would be your Cloudflare R2 or AWS S3 upload URL
-      // You'll need to set this up with proper credentials
-      const UPLOAD_ENDPOINT = 'https://akashpatelresume.us/api/upload';
+      // Direct Upload endpoint URL - your Cloudflare Worker endpoint
+      const UPLOAD_ENDPOINT = 'https://resume-file-uploader.akashp3128.workers.dev';
       
       // Handler for file input changes (shows preview)
       ['resume-file', 'eval-file', 'photo-file'].forEach(inputId => {
@@ -1465,17 +1486,7 @@
           status.innerHTML = '<div class="loading">Uploading...</div>';
           
           try {
-            // In a real implementation, you would send the file to your server or cloud storage
-            // For demonstration, we'll simulate a successful upload
-            
-            // Simulate upload with a short delay
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            
-            // Success message (in a real implementation, you would use the response from the server)
-            status.innerHTML = '<div class="success">File uploaded successfully!</div>';
-            
-            // In real implementation, uncomment and use this code:
-            /*
+            // Real implementation using the Cloudflare Worker
             const formData = new FormData();
             formData.append('file', file);
             formData.append('type', formId.split('-')[0]); // resume, eval, or photo
@@ -1488,12 +1499,18 @@
             if (response.ok) {
               const data = await response.json();
               status.innerHTML = `<div class="success">File uploaded successfully!</div>`;
-              // You could show the URL or ID of the uploaded file
+              
+              // Display the URL to the uploaded file
+              if (data.url) {
+                const linkElement = document.createElement('div');
+                linkElement.className = 'file-link';
+                linkElement.innerHTML = `<a href="${data.url}" target="_blank">View Uploaded File</a>`;
+                status.appendChild(linkElement);
+              }
             } else {
-              throw new Error('Upload failed');
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Upload failed');
             }
-            */
-            
           } catch (error) {
             console.error('Upload error:', error);
             status.innerHTML = `<div class="error">Upload failed: ${error.message}</div>`;
