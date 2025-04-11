@@ -981,9 +981,9 @@
           </div>
           
           <h3>Resume</h3>
-          <p>No resume uploaded yet</p>
+          <p id="resume-link">No resume uploaded yet</p>
           <div class="upload-section">
-            <p>Upload your resume (Max: 5MB, PDF only)</p>
+            <p>Upload your resume (Max: 10MB, PDF only)</p>
             <input type="file" accept="application/pdf" id="resume-upload">
             <button class="upload-btn">Upload</button>
           </div>
@@ -1215,7 +1215,7 @@
         }
         
         // Determine file type based on section
-        if (section === 'military') {
+        if (section === 'navy') {
           fileType = 'eval';
         } else if (section === 'resume') {
           fileType = 'resume';
@@ -1258,9 +1258,18 @@
                 alert('Photo uploaded successfully!');
               } else if (fileType === 'resume' || fileType === 'eval') {
                 // Update the document list
-                const listElement = this.closest('.card').querySelector('ul, p');
-                if (listElement.tagName === 'UL') {
+                if (fileType === 'resume') {
+                  // For resume (which has a specific paragraph with ID)
+                  const p = document.getElementById('resume-link');
+                  p.innerHTML = '';
+                  const a = document.createElement('a');
+                  a.href = result.url;
+                  a.target = '_blank';
+                  a.textContent = file.name;
+                  p.appendChild(a);
+                } else {
                   // For evaluations (which have a list)
+                  const listElement = this.closest('.card').querySelector('ul');
                   if (listElement.innerHTML.includes('No evaluations uploaded yet')) {
                     listElement.innerHTML = '';
                   }
@@ -1271,15 +1280,6 @@
                   a.textContent = file.name;
                   li.appendChild(a);
                   listElement.appendChild(li);
-                } else {
-                  // For resume (which has a paragraph)
-                  const p = listElement;
-                  p.innerHTML = '';
-                  const a = document.createElement('a');
-                  a.href = result.url;
-                  a.target = '_blank';
-                  a.textContent = file.name;
-                  p.appendChild(a);
                 }
                 alert('Document uploaded successfully!');
               }
