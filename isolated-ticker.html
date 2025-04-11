@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Isolated Stock Ticker</title>
+  <style>
+    /* Stock Ticker Styles */
+    body {
+      font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+      background-color: #f8f5f2;
+      margin: 0;
+      padding: 20px;
+    }
+    
+    h1 {
+      color: #8b0000;
+      text-align: center;
+      font-family: 'Trajan Pro', 'Times New Roman', serif;
+      margin-bottom: 20px;
+    }
+    
+    .stock-ticker-container {
+      width: 100%;
+      background-color: #000;
+      overflow: hidden;
+      position: relative;
+      height: 40px;
+      margin-bottom: 20px;
+    }
+
+    .stock-ticker-wrapper {
+      width: 100%;
+      overflow: hidden;
+      position: relative;
+      height: 100%;
+    }
+
+    .stock-ticker {
+      white-space: nowrap;
+      position: absolute;
+      left: 0;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      animation: ticker 30s linear infinite;
+      padding-left: 100%;
+      padding-right: 100%;
+      width: auto;
+    }
+
+    .stock-ticker:hover {
+      animation-play-state: paused;
+    }
+
+    .stock-item {
+      display: inline-flex;
+      align-items: center;
+      margin: 0 20px;
+      color: white;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+    }
+
+    .stock-symbol {
+      color: #c5a54a;
+    }
+
+    .stock-price {
+      margin: 0 8px;
+    }
+
+    .stock-change {
+      padding: 0 5px;
+      border-radius: 3px;
+      font-size: 0.9em;
+    }
+
+    .stock-change.positive {
+      color: #00ff00;
+    }
+
+    .stock-change.negative {
+      color: #ff0000;
+    }
+
+    .loading {
+      color: #c5a54a;
+      width: 100%;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    @keyframes ticker {
+      0% {
+        transform: translateX(0);
+      }
+      100% {
+        transform: translateX(-100%);
+      }
+    }
+    
+    .controls {
+      margin: 20px auto;
+      max-width: 600px;
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .status {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #f8f8f8;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>Isolated Stock Ticker Component</h1>
+
+  <!-- Stock Ticker -->
+  <div class="stock-ticker-container">
+    <div class="stock-ticker-wrapper">
+      <div class="stock-ticker" id="stock-ticker">
+        <!-- Stock data will be loaded here dynamically -->
+        <div class="loading">Loading market data...</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="controls">
+    <h2>Stock Ticker Controls</h2>
+    <p>This is an isolated implementation of the stock ticker component, showing the requested stocks: BTC-USD, SPY, GME, AAPL, MSFT, NVDA, XRP-USD, META, TSLA, GOOGL, PLTR</p>
+    <button id="refresh-btn">Force Refresh</button>
+    <button id="toggle-mode-btn">Toggle Fallback Mode</button>
+    <div class="status" id="ticker-status">Status: Initializing...</div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="public/js/isolated-stock-ticker.js"></script>
+  <script>
+    // Add controls for testing
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+      const tickerElement = document.getElementById('stock-ticker');
+      fetchStockData(tickerElement);
+      document.getElementById('ticker-status').textContent = 'Status: Manual refresh triggered';
+    });
+    
+    document.getElementById('toggle-mode-btn').addEventListener('click', function() {
+      usingFallbackMode = !usingFallbackMode;
+      const tickerElement = document.getElementById('stock-ticker');
+      
+      if (usingFallbackMode) {
+        updateWithRandomizedData(tickerElement);
+        document.getElementById('ticker-status').textContent = 'Status: Using fallback mode (randomized data)';
+      } else {
+        fetchStockData(tickerElement);
+        document.getElementById('ticker-status').textContent = 'Status: Using API mode (real data when available)';
+      }
+    });
+  </script>
+</body>
+</html> 
