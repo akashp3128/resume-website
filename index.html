@@ -307,16 +307,29 @@
     .document-list li {
       padding: 0.5rem 0;
       border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
     }
     
     .document-list a {
       color: #0066cc;
       text-decoration: none;
       transition: color 0.3s;
+      flex-grow: 1;
     }
     
     .document-list a:hover {
       color: #c5a54a;
+    }
+    
+    .document-list .thumbnail {
+      width: 50px;
+      height: 50px;
+      margin-right: 10px;
+      object-fit: cover;
+      border-radius: 4px;
+      border: 1px solid #eee;
+      cursor: pointer;
     }
     
     @media (max-width: 768px) {
@@ -823,6 +836,74 @@
         height: 400px;
       }
     }
+
+    /* Lightbox styles */
+    .lightbox {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.9);
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .lightbox-content {
+      display: block;
+      margin: auto;
+      max-width: 90%;
+      max-height: 90%;
+      object-fit: contain;
+    }
+    
+    .lightbox-close {
+      position: absolute;
+      top: 15px;
+      right: 25px;
+      color: #f1f1f1;
+      font-size: 40px;
+      font-weight: bold;
+      transition: color 0.3s;
+      cursor: pointer;
+      z-index: 1001;
+    }
+    
+    .lightbox-close:hover,
+    .lightbox-close:focus {
+      color: var(--accent-color);
+    }
+
+    .document-list li {
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+    }
+    
+    .document-list a {
+      color: #0066cc;
+      text-decoration: none;
+      transition: color 0.3s;
+      flex-grow: 1;
+    }
+    
+    .document-list a:hover {
+      color: #c5a54a;
+    }
+    
+    .document-list .thumbnail {
+      width: 50px;
+      height: 50px;
+      margin-right: 10px;
+      object-fit: cover;
+      border-radius: 4px;
+      border: 1px solid #eee;
+      cursor: pointer;
+    }
   </style>
   
   <!-- Admin Login Modal -->
@@ -998,8 +1079,8 @@
             <li>No evaluations uploaded yet</li>
           </ul>
           <div class="upload-section">
-            <p>Upload evaluation documents (Max: 10MB, PDF only)</p>
-            <input type="file" accept="application/pdf" id="eval-upload">
+            <p>Upload evaluation documents (Max: 20MB, PDF, JPEG, or PNG)</p>
+            <input type="file" accept="application/pdf,image/jpeg,image/jpg,image/png" id="eval-upload">
             <button class="upload-btn">Upload</button>
           </div>
         </div>
@@ -1050,6 +1131,12 @@
       </p>
     </div>
   </footer>
+
+  <!-- Lightbox for images -->
+  <div id="image-lightbox" class="lightbox">
+    <span class="lightbox-close">&times;</span>
+    <img class="lightbox-content" id="lightbox-img">
+  </div>
 
   <script>
     // Add keydown listener for Alt+T to show upload test button
@@ -1347,12 +1434,32 @@
                 if (listElement.innerHTML.includes('No evaluations uploaded yet')) {
                   listElement.innerHTML = '';
                 }
+                
                 const li = document.createElement('li');
+                
+                // Check if it's an image or PDF
+                const isImage = file.name.toLowerCase().endsWith('.jpg') || 
+                                file.name.toLowerCase().endsWith('.jpeg') || 
+                                file.name.toLowerCase().endsWith('.png');
+                
+                if (isImage) {
+                  // Create thumbnail for images
+                  const thumbnail = document.createElement('img');
+                  thumbnail.src = result.url;
+                  thumbnail.alt = file.name;
+                  thumbnail.className = 'thumbnail';
+                  thumbnail.onclick = function() {
+                    openLightbox(result.url);
+                  };
+                  li.appendChild(thumbnail);
+                }
+                
                 const a = document.createElement('a');
                 a.href = result.url;
                 a.target = '_blank';
                 a.textContent = file.name;
                 li.appendChild(a);
+                
                 listElement.appendChild(li);
                 
                 // Save eval to localStorage
@@ -1575,15 +1682,55 @@
         
         savedEvals.forEach(eval => {
           const li = document.createElement('li');
+          
+          // Check if it's an image or PDF
+          const isImage = eval.url.toLowerCase().endsWith('.jpg') || 
+                          eval.url.toLowerCase().endsWith('.jpeg') || 
+                          eval.url.toLowerCase().endsWith('.png');
+          
+          if (isImage) {
+            // Create thumbnail for images
+            const thumbnail = document.createElement('img');
+            thumbnail.src = eval.url;
+            thumbnail.alt = eval.name;
+            thumbnail.className = 'thumbnail';
+            thumbnail.onclick = function() {
+              openLightbox(eval.url);
+            };
+            li.appendChild(thumbnail);
+          }
+          
           const a = document.createElement('a');
           a.href = eval.url;
           a.target = '_blank';
           a.textContent = eval.name;
           li.appendChild(a);
+          
           listElement.appendChild(li);
         });
       }
     }
+    
+    // Lightbox functionality
+    const lightbox = document.getElementById('image-lightbox');
+    const lightboxImg = document.getElementById('lightbox-img');
+    const lightboxClose = document.querySelector('.lightbox-close');
+    
+    function openLightbox(imgSrc) {
+      lightboxImg.src = imgSrc;
+      lightbox.style.display = 'flex';
+    }
+    
+    lightboxClose.addEventListener('click', function() {
+      lightbox.style.display = 'none';
+    });
+    
+    // Close lightbox when clicking outside the image
+    lightbox.addEventListener('click', function(e) {
+      if (e.target === lightbox) {
+        lightbox.style.display = 'none';
+      }
+    });
     
     // Admin functionality
     function setupAdminFunctionality() {

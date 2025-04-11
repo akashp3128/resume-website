@@ -20,7 +20,7 @@ MAX_SIZES = {
 }
 ALLOWED_FILE_TYPES = {
     'resume': ['application/pdf'],
-    'eval': ['application/pdf'],
+    'eval': ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
     'photo': ['image/jpeg', 'image/jpg', 'image/png', 'text/plain']  # Added image/jpg as some browsers report JPEGs as image/jpg
 }
 
@@ -267,7 +267,12 @@ class UploadHandler(http.server.BaseHTTPRequestHandler):
                 return
             
             # Generate a URL for the uploaded file
-            file_url = f"http://localhost:{PORT}/uploads/{file_type}/{filename}"
+            # Use absolute URL with current origin to avoid "file not found" issues
+            origin = self.headers.get('Origin', f'http://localhost:{PORT}')
+            if origin.endswith('/'):
+                origin = origin[:-1]  # Remove trailing slash
+                
+            file_url = f"{origin}/uploads/{file_type}/{filename}"
             
             print(f"File URL: {file_url}")
             
@@ -318,9 +323,17 @@ class UploadHandler(http.server.BaseHTTPRequestHandler):
                 
                 print(f"Serving file with content type: {content_type}")
                 
-                # Serve the file
+                # Add CORS headers for file serving
                 self.send_response(200)
                 self.send_header('Content-Type', content_type)
+                
+                # Add CORS headers
+                origin = self.headers.get('Origin', '')
+                if origin in ALLOWED_ORIGINS:
+                    self.send_header('Access-Control-Allow-Origin', origin)
+                else:
+                    self.send_header('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0])
+                
                 self.end_headers()
                 
                 with open(filepath, 'rb') as f:
