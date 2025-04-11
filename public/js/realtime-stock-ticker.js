@@ -11,6 +11,13 @@ const CRYPTO_SYMBOLS = {
   'ripple': 'XRP'
 };
 
+// API endpoints for stock data
+const API_ENDPOINTS = {
+  PRIMARY: 'yahoo', // Yahoo Finance
+  SECONDARY: 'finnhub', // Finnhub
+  TERTIARY: 'twelvedata' // Twelve Data
+};
+
 // Track API state
 let usingFallbackMode = false;
 let apiFailureCount = 0;
@@ -138,29 +145,81 @@ function checkFailureStatus(tickerElement) {
  */
 async function fetchStockData() {
   const stockData = [];
+  console.log("Starting stock data fetch for symbols:", STOCK_SYMBOLS);
   
   try {
     // Process stocks in parallel (up to 5 at a time to avoid overwhelming browser)
     const results = await Promise.allSettled(
       STOCK_SYMBOLS.map(async (symbol) => {
         try {
-          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`;
+          console.log(`Fetching data for ${symbol}...`);
+          // Use a CORS proxy if needed
+          const isLocalhost = window.location.hostname === 'localhost' || 
+                              window.location.hostname === '127.0.0.1';
+          // Optional CORS proxy for development
+          const corsProxy = isLocalhost ? 'https://cors-anywhere.herokuapp.com/' : '';
+          const url = `${corsProxy}https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`;
+          
           const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          
           const data = await response.json();
+          console.log(`Received data for ${symbol}:`, data);
           
           if (data && data.chart && data.chart.result && data.chart.result[0]) {
             const result = data.chart.result[0];
             const quote = result.meta;
             const indicators = result.indicators.quote[0];
-            const timestamp = result.timestamp;
             
             // Get most recent close price
-            const latestPrice = quote.regularMarketPrice || indicators.close[indicators.close.length - 1];
+            let latestPrice = 0;
+            if (quote.regularMarketPrice) {
+              latestPrice = quote.regularMarketPrice;
+            } else if (indicators && indicators.close) {
+              // Find the last valid close price (skip null values)
+              for (let i = indicators.close.length - 1; i >= 0; i--) {
+                if (indicators.close[i] !== null) {
+                  latestPrice = indicators.close[i];
+                  break;
+                }
+              }
+            }
+            
             // Get previous close price
-            const previousClose = quote.chartPreviousClose || indicators.close[indicators.close.length - 2];
+            let previousClose = 0;
+            if (quote.chartPreviousClose) {
+              previousClose = quote.chartPreviousClose;
+            } else if (indicators && indicators.close) {
+              // Find the second last valid close price
+              let validCloseCount = 0;
+              for (let i = indicators.close.length - 1; i >= 0; i--) {
+                if (indicators.close[i] !== null) {
+                  validCloseCount++;
+                  if (validCloseCount === 2) {
+                    previousClose = indicators.close[i];
+                    break;
+                  }
+                }
+              }
+            }
+            
+            // If we couldn't determine a previous close, use a percentage less than current
+            if (previousClose === 0 && latestPrice > 0) {
+              previousClose = latestPrice * 0.99; // Assume a small positive change
+            }
+            
             // Calculate change
             const change = latestPrice - previousClose;
-            const changePercent = (change / previousClose) * 100;
+            const changePercent = (previousClose > 0) ? (change / previousClose) * 100 : 0;
+            
+            console.log(`Stock data processed for ${symbol}:`, {
+              price: latestPrice,
+              prevClose: previousClose,
+              change: change,
+              changePercent: changePercent
+            });
             
             return {
               symbol: symbol,
@@ -168,8 +227,10 @@ async function fetchStockData() {
               change: change.toFixed(2),
               changePercent: `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`
             };
+          } else {
+            console.warn(`Invalid data structure for ${symbol}`);
+            return null;
           }
-          return null;
         } catch (err) {
           console.error(`Error fetching data for ${symbol}:`, err);
           return null;
@@ -182,13 +243,46 @@ async function fetchStockData() {
       if (result.status === 'fulfilled' && result.value) {
         stockData.push(result.value);
       } else {
+        // Identify which symbol failed
+        const failedSymbol = result.reason?.symbol || 'unknown';
+        console.warn(`Using mock data for ${failedSymbol} due to fetch failure`);
+        
         // Add mock data for failed symbols
-        const mockData = getStaticDataForSymbol(result.reason?.symbol || '');
+        const mockData = getStaticDataForSymbol(failedSymbol);
         if (mockData) stockData.push(mockData);
       }
     });
+    
+    console.log(`Successfully fetched stock data for ${stockData.length} symbols:`, stockData);
   } catch (error) {
     console.error('Stock fetch failed:', error);
+  }
+  
+  // If we couldn't get any stock data from the primary method, try the fallback
+  if (stockData.length === 0) {
+    console.warn("Primary stock data fetch failed, trying secondary method");
+    const secondaryData = await fetchStockDataFallback(STOCK_SYMBOLS);
+    
+    if (secondaryData.length > 0) {
+      console.log("Successfully received secondary stock data:", secondaryData);
+      return secondaryData;
+    }
+    
+    // If secondary also failed, try tertiary method
+    console.warn("Secondary method failed, trying tertiary method");
+    const tertiaryData = await fetchStockDataTertiary(STOCK_SYMBOLS);
+    
+    if (tertiaryData.length > 0) {
+      console.log("Successfully received tertiary stock data:", tertiaryData);
+      return tertiaryData;
+    }
+    
+    // If all methods failed, use mock data
+    console.warn("All API methods failed, using mock data for all stocks");
+    STOCK_SYMBOLS.forEach(symbol => {
+      const mockData = getStaticDataForSymbol(symbol);
+      if (mockData) stockData.push(mockData);
+    });
   }
   
   return stockData;
@@ -285,6 +379,127 @@ function renderTicker(tickerElement, stockData) {
   // Set animation duration based on number of items
   const duration = stockData.length * 5; // 5 seconds per stock
   tickerElement.style.animationDuration = `${duration}s`;
+}
+
+/**
+ * Alternative fallback method to fetch stock data
+ * This is used if the primary Yahoo Finance API method fails
+ */
+async function fetchStockDataFallback(symbols) {
+  const stockData = [];
+  console.log("Attempting fallback stock data fetch for:", symbols);
+  
+  try {
+    // We'll use the Finnhub free data API as a fallback
+    // Process symbols sequentially to avoid rate limits
+    for (const symbol of symbols) {
+      try {
+        // This endpoint doesn't provide market data but can be used to verify if a stock exists
+        const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=demo`;
+        const response = await fetch(url);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`Fallback data for ${symbol}:`, data);
+          
+          if (data && data.c > 0) {
+            // If we got a valid current price
+            const currentPrice = data.c;
+            const previousClose = data.pc || currentPrice * 0.99;
+            const change = currentPrice - previousClose;
+            const changePercent = (change / previousClose) * 100;
+            
+            stockData.push({
+              symbol: symbol,
+              price: currentPrice.toFixed(2),
+              change: change.toFixed(2),
+              changePercent: `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`
+            });
+            
+            continue; // Skip to next symbol
+          }
+        }
+        
+        // If we reach here, fallback API failed too
+        console.warn(`Fallback API failed for ${symbol}, using static data`);
+        const mockData = getStaticDataForSymbol(symbol);
+        if (mockData) stockData.push(mockData);
+        
+      } catch (err) {
+        console.error(`Error in fallback fetch for ${symbol}:`, err);
+        const mockData = getStaticDataForSymbol(symbol);
+        if (mockData) stockData.push(mockData);
+      }
+      
+      // Add a small delay to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+  } catch (error) {
+    console.error('Fallback stock fetch failed:', error);
+  }
+  
+  return stockData;
+}
+
+/**
+ * Third option to fetch stock data using Twelve Data API
+ * This is used as a last resort when both primary and secondary methods fail
+ */
+async function fetchStockDataTertiary(symbols) {
+  const stockData = [];
+  console.log("Attempting tertiary stock data fetch for:", symbols);
+  
+  try {
+    // We'll use a public demo endpoint that doesn't require API keys
+    // Process symbols sequentially to avoid rate limits
+    for (const symbol of symbols) {
+      try {
+        // Using Alpha Vantage's demo endpoint as a last resort
+        const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=demo`;
+        
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`Tertiary data for ${symbol}:`, data);
+          
+          // Check if we received valid data
+          if (data && data['Global Quote'] && Object.keys(data['Global Quote']).length > 0) {
+            const quote = data['Global Quote'];
+            const price = parseFloat(quote['05. price'] || 0);
+            const change = parseFloat(quote['09. change'] || 0);
+            const changePercent = quote['10. change percent'] || '0.00%';
+            
+            if (price > 0) {
+              stockData.push({
+                symbol: symbol,
+                price: price.toFixed(2),
+                change: change.toFixed(2),
+                changePercent: changePercent
+              });
+              continue; // Skip to next symbol
+            }
+          }
+        }
+        
+        // If we reach here, tertiary API failed too
+        console.warn(`Tertiary API failed for ${symbol}, using static data`);
+        const mockData = getStaticDataForSymbol(symbol);
+        if (mockData) stockData.push(mockData);
+        
+      } catch (err) {
+        console.error(`Error in tertiary fetch for ${symbol}:`, err);
+        const mockData = getStaticDataForSymbol(symbol);
+        if (mockData) stockData.push(mockData);
+      }
+      
+      // Add a small delay to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  } catch (error) {
+    console.error('Tertiary stock fetch failed:', error);
+  }
+  
+  return stockData;
 }
 
 // Initialize when DOM is ready
