@@ -6,22 +6,30 @@ import os
 import sys
 import io
 import tempfile
-from urllib.parse import parse_qs
+import mimetypes
+from urllib.parse import parse_qs, urlparse
 from datetime import datetime
+
+# Initialize mime types
+mimetypes.init()
+mimetypes.add_type('application/pdf', '.pdf')
+mimetypes.add_type('image/jpeg', '.jpg')
+mimetypes.add_type('image/jpeg', '.jpeg')
+mimetypes.add_type('image/png', '.png')
 
 # Configuration
 PORT = 8001
 UPLOAD_DIR = '../uploads'  # Store uploads in the root directory
-ALLOWED_ORIGINS = ['http://localhost:8000', 'http://localhost:3000', 'http://127.0.0.1:8000', 'https://akashpatelresume.us']
+ALLOWED_ORIGINS = ['http://localhost:8000', 'http://localhost:3000', 'http://127.0.0.1:8000', 'https://akashpatelresume.us', '*']
 MAX_SIZES = {
-    'resume': 10 * 1024 * 1024,  # 10MB for resumes (increased from 5MB)
-    'eval': 20 * 1024 * 1024,    # 20MB for evals (increased from 10MB)
-    'photo': 10 * 1024 * 1024    # 10MB for photos (increased from 5MB)
+    'resume': 10 * 1024 * 1024,  # 10MB for resumes
+    'eval': 20 * 1024 * 1024,    # 20MB for evals
+    'photo': 10 * 1024 * 1024    # 10MB for photos
 }
 ALLOWED_FILE_TYPES = {
     'resume': ['application/pdf'],
     'eval': ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
-    'photo': ['image/jpeg', 'image/jpg', 'image/png', 'text/plain']  # Added image/jpg as some browsers report JPEGs as image/jpg
+    'photo': ['image/jpeg', 'image/jpg', 'image/png', 'text/plain']
 }
 
 print(f"Starting upload server on port {PORT}")
@@ -37,6 +45,29 @@ try:
 except Exception as e:
     print(f"Error creating directories: {e}", file=sys.stderr)
     sys.exit(1)
+
+# Helper function to detect file type more accurately
+def detect_file_type(filename, provided_type=None):
+    # First check the provided type if available
+    if provided_type and provided_type != 'application/octet-stream':
+        return provided_type
+        
+    # Try to determine from file extension
+    file_type, encoding = mimetypes.guess_type(filename)
+    if file_type:
+        return file_type
+        
+    # Default fallbacks based on extension
+    ext = os.path.splitext(filename.lower())[1]
+    if ext == '.pdf':
+        return 'application/pdf'
+    elif ext in ['.jpg', '.jpeg']:
+        return 'image/jpeg'
+    elif ext == '.png':
+        return 'image/png'
+    
+    # Last resort fallback
+    return 'application/octet-stream'
 
 class MultipartFormParser:
     def __init__(self, content_type, rfile, content_length):
@@ -111,9 +142,12 @@ class MultipartFormParser:
                     temp_file.close()
                     temp_files.append(temp_file.name)
                     
+                    # Detect the correct mime type
+                    detected_type = detect_file_type(filename, content_type)
+                    
                     result[field_name] = {
                         'filename': filename,
-                        'type': content_type,
+                        'type': detected_type,
                         'size': len(body),
                         'tempfile': temp_file.name
                     }
@@ -155,8 +189,8 @@ class UploadHandler(http.server.BaseHTTPRequestHandler):
         origin = self.headers.get('Origin', '')
         print(f"Received request with origin: {origin}")
         
-        # Always add CORS headers for development
-        self.send_header('Access-Control-Allow-Origin', origin if origin in ALLOWED_ORIGINS else ALLOWED_ORIGINS[0])
+        # Always add CORS headers - allow from all origins for testing
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS, GET')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.send_header('Access-Control-Max-Age', '86400')
@@ -217,6 +251,7 @@ class UploadHandler(http.server.BaseHTTPRequestHandler):
             file_type = form['type']
             
             print(f"Received file: {file_item['filename']} of type {file_type}")
+            print(f"File content type detected as: {file_item['type']}")
             
             # Validate file type
             if file_type not in ['resume', 'eval', 'photo']:
@@ -239,7 +274,20 @@ class UploadHandler(http.server.BaseHTTPRequestHandler):
             
             # Validate content type
             print(f"File content type: {file_item['type']}")
-            if file_item['type'] not in ALLOWED_FILE_TYPES[file_type]:
+            
+            # Special handling for image files due to inconsistent MIME types
+            is_valid_type = False
+            if file_type == 'eval' or file_type == 'photo':
+                # For images, check file extension as well
+                file_ext = os.path.splitext(file_item['filename'].lower())[1]
+                if file_ext in ['.jpg', '.jpeg', '.png'] or file_item['type'] in ALLOWED_FILE_TYPES[file_type]:
+                    is_valid_type = True
+            else:
+                # For PDFs, rely on the detected content type
+                if file_item['type'] in ALLOWED_FILE_TYPES[file_type]:
+                    is_valid_type = True
+            
+            if not is_valid_type:
                 print(f"Invalid content type. Expected one of: {ALLOWED_FILE_TYPES[file_type]}")
                 parser.cleanup_temp_files(form)
                 self._json_response({
@@ -267,12 +315,25 @@ class UploadHandler(http.server.BaseHTTPRequestHandler):
                 return
             
             # Generate a URL for the uploaded file
-            # Use absolute URL with current origin to avoid "file not found" issues
-            origin = self.headers.get('Origin', f'http://localhost:{PORT}')
-            if origin.endswith('/'):
-                origin = origin[:-1]  # Remove trailing slash
-                
-            file_url = f"{origin}/uploads/{file_type}/{filename}"
+            # Determine the appropriate base URL
+            host = self.headers.get('Host', f'localhost:{PORT}')
+            
+            # Create a reliable URL that will work from both the browser and local server
+            if 'localhost' in host or '127.0.0.1' in host:
+                base_url = f"http://{host}"
+            else:
+                # For production, use the origin if available
+                origin = self.headers.get('Origin', '')
+                if origin:
+                    base_url = origin
+                else:
+                    base_url = f"http://{host}"
+            
+            # Remove trailing slash if present
+            if base_url.endswith('/'):
+                base_url = base_url[:-1]
+            
+            file_url = f"{base_url}/uploads/{file_type}/{filename}"
             
             print(f"File URL: {file_url}")
             
@@ -311,33 +372,30 @@ class UploadHandler(http.server.BaseHTTPRequestHandler):
                     self.send_error(404, 'File not found')
                     return
                 
-                # Determine content type
-                if filepath.endswith('.pdf'):
-                    content_type = 'application/pdf'
-                elif filepath.endswith('.jpg') or filepath.endswith('.jpeg'):
-                    content_type = 'image/jpeg'
-                elif filepath.endswith('.png'):
-                    content_type = 'image/png'
-                else:
-                    content_type = 'application/octet-stream'
-                
+                # Determine content type using the helper function
+                content_type = detect_file_type(filepath)
                 print(f"Serving file with content type: {content_type}")
                 
                 # Add CORS headers for file serving
                 self.send_response(200)
                 self.send_header('Content-Type', content_type)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Cache-Control', 'public, max-age=86400')  # Cache for one day
                 
-                # Add CORS headers
-                origin = self.headers.get('Origin', '')
-                if origin in ALLOWED_ORIGINS:
-                    self.send_header('Access-Control-Allow-Origin', origin)
-                else:
-                    self.send_header('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0])
+                # Get the file size for Content-Length header
+                file_size = os.path.getsize(filepath)
+                self.send_header('Content-Length', str(file_size))
                 
                 self.end_headers()
                 
+                # Send the file in chunks to avoid memory issues with large files
                 with open(filepath, 'rb') as f:
-                    self.wfile.write(f.read())
+                    chunk_size = 8192  # 8KB chunks
+                    while True:
+                        chunk = f.read(chunk_size)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
                 
                 print("File served successfully")
                 

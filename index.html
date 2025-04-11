@@ -1274,6 +1274,11 @@
     let UPLOAD_ENDPOINT = PRIMARY_UPLOAD_ENDPOINT;
     let currentOrigin = window.location.origin;
     
+    // For local testing on localhost, default to the fallback endpoint
+    if (currentOrigin.includes('localhost')) {
+      UPLOAD_ENDPOINT = FALLBACK_UPLOAD_ENDPOINT;
+    }
+    
     // File size limits (matching server configuration)
     const MAX_SIZES = {
       resume: 10 * 1024 * 1024,  // 10MB
@@ -1428,6 +1433,7 @@
                 
                 // Display the PDF with a fallback to download option
                 displayResume(result.url, file.name);
+                alert('Resume uploaded successfully!');
               } else if (fileType === 'eval') {
                 // For evaluations (which have a list)
                 const listElement = this.closest('.card').querySelector('ul');
@@ -1548,6 +1554,31 @@
       }
     });
     
+    // Add validation for eval uploads
+    document.getElementById('eval-upload').addEventListener('change', function(e) {
+      if (this.files && this.files[0]) {
+        const file = this.files[0];
+        
+        // Validate file type
+        const validFileTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+        if (!validFileTypes.includes(file.type)) {
+          alert('Please select a valid file type (PDF, JPEG, JPG, or PNG)');
+          this.value = '';  // Clear the file input
+          return;
+        }
+        
+        // Validate file size
+        const maxSize = 20 * 1024 * 1024; // 20MB
+        if (file.size > maxSize) {
+          alert('File is too large. Please select a file under 20MB.');
+          this.value = '';  // Clear the file input
+          return;
+        }
+        
+        console.log(`Eval file selected: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
+      }
+    });
+    
     // Theme toggle functionality
     const themeBtn = document.getElementById('theme-btn');
     themeBtn.addEventListener('click', function() {
@@ -1641,8 +1672,16 @@
         previewContainer.appendChild(errorMsg);
       });
       
+      // Fix for PDF display issues - make sure the URL is correctly formatted for iframes
+      let iframeSrc = resumeUrl;
+      
+      // If using localhost URL, make sure we're using the correct protocol
+      if (iframeSrc.includes('localhost')) {
+        iframeSrc = iframeSrc.replace('https://', 'http://');
+      }
+      
       // Set the source last to make sure handlers are in place
-      pdfViewer.src = resumeUrl;
+      pdfViewer.src = iframeSrc;
       pdfViewer.title = 'Resume PDF';
       pdfViewer.setAttribute('frameborder', '0');
       pdfViewer.setAttribute('loading', 'lazy');
