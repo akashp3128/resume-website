@@ -8,7 +8,9 @@ const ALLOWED_ORIGINS = [
   'https://akashpatelresume.us',
   'http://akashpatelresume.us', 
   'http://localhost:8000', 
-  'http://localhost:3000'
+  'http://localhost:3000',
+  'https://localhost:8000',
+  'https://localhost:3000'
 ];
 const BUCKET_NAME = 'resume';
 // We'll serve files directly from the worker instead of using the public bucket URL
@@ -29,17 +31,20 @@ export default {
     // Get the URL and pathname
     const url = new URL(request.url);
     const path = url.pathname;
+    const method = request.method;
+    
+    console.log(`Request received: ${method} ${path}`);
     
     // Handle CORS preflight requests
-    if (request.method === 'OPTIONS') {
+    if (method === 'OPTIONS') {
       return handleCORS(request);
     }
     
-    // Handle file serving for GET requests
-    if (request.method === 'GET' && path !== '/') {
+    // Handle file serving for GET and HEAD requests
+    if ((method === 'GET' || method === 'HEAD') && path !== '/') {
       // Remove the leading slash
       const key = path.substring(1);
-      console.log(`Retrieving file: ${key}`);
+      console.log(`Retrieving file: ${key} with method: ${method}`);
       
       try {
         // Get the object from R2
@@ -72,30 +77,45 @@ export default {
         
         console.log(`Serving file with content type: ${contentType}`);
         
-        // Return the file with proper headers
-        return new Response(object.body, {
-          headers: {
-            'Content-Type': contentType,
-            'Content-Length': object.size,
-            'Cache-Control': 'public, max-age=31536000',
-            'Access-Control-Allow-Origin': '*'
-          }
-        });
+        // Set common headers
+        const headers = {
+          'Content-Type': contentType,
+          'Content-Length': object.size,
+          'Cache-Control': 'public, max-age=31536000',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
+          'Access-Control-Max-Age': '86400'
+        };
+        
+        // For HEAD requests, just return the headers without the body
+        if (method === 'HEAD') {
+          return new Response(null, { headers });
+        }
+        
+        // For GET requests, return the file with headers
+        return new Response(object.body, { headers });
       } catch (error) {
         console.error('Error serving file:', error);
         return new Response('Internal Server Error: ' + error.message, { 
           status: 500,
           headers: {
             'Content-Type': 'text/plain',
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS'
           }
         });
       }
     }
 
     // Only allow POST requests for uploads
-    if (request.method !== 'POST') {
-      return new Response('Method not allowed', { status: 405 });
+    if (method !== 'POST') {
+      return new Response('Method not allowed', { 
+        status: 405,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS'
+        }
+      });
     }
 
     // Validate the request origin
@@ -189,7 +209,7 @@ function handleCORS(request) {
   return new Response(null, {
     headers: {
       'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Max-Age': '86400',
     }
@@ -203,7 +223,7 @@ function jsonResponse(data, status = 200, origin) {
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
     }
   });
 } 

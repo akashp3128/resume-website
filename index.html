@@ -1335,66 +1335,12 @@
                 
                 alert('Photo uploaded successfully!');
               } else if (fileType === 'resume') {
-                // For resume, display the PDF directly
-                const container = document.getElementById('resume-container');
-                
                 // Save the resume URL to localStorage so it persists across sessions
                 localStorage.setItem('uploaded-resume-url', result.url);
                 localStorage.setItem('uploaded-resume-filename', file.name);
                 
-                // Verify the file exists before creating the viewer
-                fetch(result.url, { method: 'HEAD' })
-                  .then(response => {
-                    if (response.ok) {
-                      console.log('Resume file exists and is accessible');
-                      
-                      // Create the preview container
-                      const previewContainer = document.createElement('div');
-                      previewContainer.className = 'resume-preview-container';
-                      
-                      // Create actions bar with download link
-                      const actionsDiv = document.createElement('div');
-                      actionsDiv.className = 'resume-actions';
-                      
-                      // Create download link
-                      const downloadLink = document.createElement('a');
-                      downloadLink.href = result.url;
-                      downloadLink.className = 'resume-download-link';
-                      downloadLink.textContent = 'Download Resume';
-                      downloadLink.target = '_blank';
-                      actionsDiv.appendChild(downloadLink);
-                      
-                      // Add filename display
-                      const filenameSpan = document.createElement('span');
-                      filenameSpan.textContent = file.name;
-                      filenameSpan.style.color = '#666';
-                      filenameSpan.style.fontSize = '0.9rem';
-                      actionsDiv.appendChild(filenameSpan);
-                      
-                      previewContainer.appendChild(actionsDiv);
-                      
-                      // Create PDF viewer
-                      const pdfViewer = document.createElement('iframe');
-                      pdfViewer.className = 'pdf-viewer';
-                      pdfViewer.src = result.url;
-                      pdfViewer.title = 'Resume PDF';
-                      pdfViewer.setAttribute('frameborder', '0');
-                      pdfViewer.setAttribute('loading', 'lazy');
-                      
-                      previewContainer.appendChild(pdfViewer);
-                      
-                      // Clear container and add new elements
-                      container.innerHTML = '';
-                      container.appendChild(previewContainer);
-                    } else {
-                      console.error('Resume file not accessible', response.status);
-                      alert(`The uploaded file cannot be accessed (${response.status}). Please try again or contact support.`);
-                    }
-                  })
-                  .catch(error => {
-                    console.error('Error checking resume file:', error);
-                    alert('Error accessing the uploaded file. Please try again or contact support.');
-                  });
+                // Display the PDF with a fallback to download option
+                displayResume(result.url, file.name);
               } else if (fileType === 'eval') {
                 // For evaluations (which have a list)
                 const listElement = this.closest('.card').querySelector('ul');
@@ -1530,6 +1476,77 @@
       setupAdminFunctionality();
     });
     
+    // Helper function to display a resume with fallback
+    function displayResume(resumeUrl, filename) {
+      console.log(`Displaying resume: ${resumeUrl}`);
+      const container = document.getElementById('resume-container');
+      
+      // Create the preview container
+      const previewContainer = document.createElement('div');
+      previewContainer.className = 'resume-preview-container';
+      
+      // Create actions bar with download link
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'resume-actions';
+      
+      // Create download link
+      const downloadLink = document.createElement('a');
+      downloadLink.href = resumeUrl;
+      downloadLink.className = 'resume-download-link';
+      downloadLink.textContent = 'Download Resume';
+      downloadLink.target = '_blank';
+      actionsDiv.appendChild(downloadLink);
+      
+      // Add filename display
+      const filenameSpan = document.createElement('span');
+      filenameSpan.textContent = filename;
+      filenameSpan.style.color = '#666';
+      filenameSpan.style.fontSize = '0.9rem';
+      actionsDiv.appendChild(filenameSpan);
+      
+      previewContainer.appendChild(actionsDiv);
+      
+      // Create PDF viewer with error handling
+      const pdfViewer = document.createElement('iframe');
+      pdfViewer.className = 'pdf-viewer';
+      
+      // Add load and error event handlers
+      pdfViewer.addEventListener('load', function() {
+        console.log('PDF loaded successfully');
+      });
+      
+      pdfViewer.addEventListener('error', function(e) {
+        console.error('PDF loading error:', e);
+        pdfViewer.style.display = 'none';
+        
+        // Add error message
+        const errorMsg = document.createElement('div');
+        errorMsg.style.padding = '1rem';
+        errorMsg.style.border = '1px solid #ff6b6b';
+        errorMsg.style.borderRadius = '4px';
+        errorMsg.style.marginTop = '1rem';
+        errorMsg.style.backgroundColor = '#fff9f9';
+        errorMsg.style.color = '#d63031';
+        errorMsg.innerHTML = `
+          <p style="margin: 0; padding: 0 0 0.5rem 0;"><strong>Unable to display the PDF.</strong></p>
+          <p style="margin: 0; padding: 0;">You can still <a href="${resumeUrl}" target="_blank" style="color: #d63031; text-decoration: underline;">download the file</a> directly.</p>
+        `;
+        previewContainer.appendChild(errorMsg);
+      });
+      
+      // Set the source last to make sure handlers are in place
+      pdfViewer.src = resumeUrl;
+      pdfViewer.title = 'Resume PDF';
+      pdfViewer.setAttribute('frameborder', '0');
+      pdfViewer.setAttribute('loading', 'lazy');
+      
+      previewContainer.appendChild(pdfViewer);
+      
+      // Clear container and add new elements
+      container.innerHTML = '';
+      container.appendChild(previewContainer);
+    }
+    
     // Load previously uploaded files from localStorage
     function loadSavedUploads() {
       // Load photo if exists
@@ -1547,62 +1564,7 @@
       const resumeUrl = localStorage.getItem('uploaded-resume-url');
       const resumeFilename = localStorage.getItem('uploaded-resume-filename');
       if (resumeUrl && resumeFilename) {
-        // Verify the file still exists
-        fetch(resumeUrl, { method: 'HEAD' })
-          .then(response => {
-            if (response.ok) {
-              console.log('Resume file exists and is accessible');
-              
-              // Create the preview container
-              const container = document.getElementById('resume-container');
-              const previewContainer = document.createElement('div');
-              previewContainer.className = 'resume-preview-container';
-              
-              // Create actions bar with download link
-              const actionsDiv = document.createElement('div');
-              actionsDiv.className = 'resume-actions';
-              
-              // Create download link
-              const downloadLink = document.createElement('a');
-              downloadLink.href = resumeUrl;
-              downloadLink.className = 'resume-download-link';
-              downloadLink.textContent = 'Download Resume';
-              downloadLink.target = '_blank';
-              actionsDiv.appendChild(downloadLink);
-              
-              // Add filename display
-              const filenameSpan = document.createElement('span');
-              filenameSpan.textContent = resumeFilename;
-              filenameSpan.style.color = '#666';
-              filenameSpan.style.fontSize = '0.9rem';
-              actionsDiv.appendChild(filenameSpan);
-              
-              previewContainer.appendChild(actionsDiv);
-              
-              // Create PDF viewer
-              const pdfViewer = document.createElement('iframe');
-              pdfViewer.className = 'pdf-viewer';
-              pdfViewer.src = resumeUrl;
-              pdfViewer.title = 'Resume PDF';
-              pdfViewer.setAttribute('frameborder', '0');
-              pdfViewer.setAttribute('loading', 'lazy');
-              
-              previewContainer.appendChild(pdfViewer);
-              
-              // Clear container and add new elements
-              container.innerHTML = '';
-              container.appendChild(previewContainer);
-            } else {
-              console.error('Saved resume file not accessible', response.status);
-              // Clear the saved resume since it's no longer accessible
-              localStorage.removeItem('uploaded-resume-url');
-              localStorage.removeItem('uploaded-resume-filename');
-            }
-          })
-          .catch(error => {
-            console.error('Error checking saved resume file:', error);
-            // Don't clear localStorage here as the file might be temporarily unavailable
-          });
+        displayResume(resumeUrl, resumeFilename);
       }
       
       // Load evaluations if exist
