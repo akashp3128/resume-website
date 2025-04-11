@@ -1012,10 +1012,146 @@
   </footer>
 
   <script>
+    // Add keydown listener for Alt+T to show upload test button
+    document.addEventListener('keydown', function(e) {
+      if (e.altKey && e.key === 't') {
+        const testButton = document.createElement('button');
+        testButton.innerText = 'Test Upload Service';
+        testButton.style.position = 'fixed';
+        testButton.style.top = '10px';
+        testButton.style.right = '10px';
+        testButton.style.zIndex = '9999';
+        testButton.style.padding = '10px';
+        testButton.style.backgroundColor = '#ffff00';
+        testButton.style.color = '#000';
+        testButton.style.border = '1px solid #000';
+        testButton.style.borderRadius = '5px';
+        
+        testButton.addEventListener('click', async function() {
+          console.log('Testing upload service...');
+          
+          // Create status message
+          const statusDiv = document.createElement('div');
+          statusDiv.style.position = 'fixed';
+          statusDiv.style.top = '50px';
+          statusDiv.style.right = '10px';
+          statusDiv.style.zIndex = '9999';
+          statusDiv.style.padding = '10px';
+          statusDiv.style.backgroundColor = '#f0f0f0';
+          statusDiv.style.border = '1px solid #ccc';
+          statusDiv.style.borderRadius = '5px';
+          statusDiv.style.maxWidth = '300px';
+          statusDiv.style.maxHeight = '400px';
+          statusDiv.style.overflow = 'auto';
+          document.body.appendChild(statusDiv);
+          
+          const addStatus = (message) => {
+            console.log(message);
+            const p = document.createElement('p');
+            p.innerText = message;
+            statusDiv.appendChild(p);
+            statusDiv.scrollTop = statusDiv.scrollHeight;
+          };
+          
+          // Test primary endpoint
+          addStatus('1. Testing primary endpoint connection...');
+          try {
+            const primaryResponse = await fetch(PRIMARY_UPLOAD_ENDPOINT, {
+              method: 'OPTIONS',
+              headers: {
+                'Origin': currentOrigin
+              }
+            });
+            
+            if (primaryResponse.ok) {
+              addStatus('✅ Primary endpoint is responding');
+            } else {
+              addStatus(`❌ Primary endpoint error: ${primaryResponse.status} ${primaryResponse.statusText}`);
+            }
+          } catch (error) {
+            addStatus(`❌ Primary endpoint connection failed: ${error.message}`);
+          }
+          
+          // Test fallback endpoint
+          addStatus('2. Testing fallback endpoint connection...');
+          try {
+            const fallbackResponse = await fetch(FALLBACK_UPLOAD_ENDPOINT, {
+              method: 'OPTIONS',
+              headers: {
+                'Origin': currentOrigin
+              }
+            });
+            
+            if (fallbackResponse.ok) {
+              addStatus('✅ Fallback endpoint is responding');
+            } else {
+              addStatus(`❌ Fallback endpoint error: ${fallbackResponse.status} ${fallbackResponse.statusText}`);
+            }
+          } catch (error) {
+            addStatus(`❌ Fallback endpoint connection failed: ${error.message}`);
+          }
+          
+          // Create a test file for upload
+          addStatus('3. Creating test file for upload...');
+          const testBlob = new Blob(['Test file content'], { type: 'text/plain' });
+          const testFile = new File([testBlob], 'test.txt', { type: 'text/plain' });
+          
+          // Create FormData
+          const formData = new FormData();
+          formData.append('file', testFile);
+          formData.append('type', 'photo');  // Use photo type since it accepts more formats
+          
+          // Try upload to fallback endpoint first (more likely to work)
+          addStatus('4. Attempting upload to fallback endpoint...');
+          try {
+            const uploadResponse = await fetch(FALLBACK_UPLOAD_ENDPOINT, {
+              method: 'POST',
+              body: formData,
+              headers: {
+                'Origin': currentOrigin
+              }
+            });
+            
+            if (uploadResponse.ok) {
+              const result = await uploadResponse.json();
+              addStatus(`✅ Upload succeeded: ${JSON.stringify(result)}`);
+            } else {
+              try {
+                const errorData = await uploadResponse.json();
+                addStatus(`❌ Upload failed: ${JSON.stringify(errorData)}`);
+              } catch (e) {
+                addStatus(`❌ Upload failed with status: ${uploadResponse.status} ${uploadResponse.statusText}`);
+              }
+            }
+          } catch (error) {
+            addStatus(`❌ Upload attempt failed: ${error.message}`);
+          }
+          
+          // Add close button
+          const closeButton = document.createElement('button');
+          closeButton.innerText = 'Close';
+          closeButton.style.marginTop = '10px';
+          closeButton.addEventListener('click', function() {
+            statusDiv.remove();
+          });
+          statusDiv.appendChild(closeButton);
+        });
+        
+        document.body.appendChild(testButton);
+      }
+    });
+    
     // Configure upload endpoints
     const PRIMARY_UPLOAD_ENDPOINT = 'https://resume-file-uploader.akashpatelresume.us';
     const FALLBACK_UPLOAD_ENDPOINT = 'http://localhost:8001';
     let UPLOAD_ENDPOINT = PRIMARY_UPLOAD_ENDPOINT;
+    let currentOrigin = window.location.origin;
+    
+    console.log('Page loaded. Origins:', {
+      primary: PRIMARY_UPLOAD_ENDPOINT,
+      fallback: FALLBACK_UPLOAD_ENDPOINT,
+      current: currentOrigin
+    });
     
     // Handle file uploads
     document.querySelectorAll('.upload-btn').forEach(button => {
@@ -1034,7 +1170,7 @@
             const statusCheck = await fetch(PRIMARY_UPLOAD_ENDPOINT, {
               method: 'OPTIONS',
               headers: {
-                'Origin': window.location.origin
+                'Origin': currentOrigin
               }
             });
             
@@ -1052,7 +1188,7 @@
               const fallbackCheck = await fetch(FALLBACK_UPLOAD_ENDPOINT, {
                 method: 'OPTIONS',
                 headers: {
-                  'Origin': window.location.origin
+                  'Origin': currentOrigin
                 }
               });
               
@@ -1103,7 +1239,10 @@
             // Upload to Cloudflare Worker
             const response = await fetch(UPLOAD_ENDPOINT, {
               method: 'POST',
-              body: formData
+              body: formData,
+              headers: {
+                'Origin': currentOrigin
+              }
             });
             
             // Reset button state
