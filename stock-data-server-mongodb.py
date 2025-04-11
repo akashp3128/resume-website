@@ -90,6 +90,44 @@ except ImportError:
                 print("ERROR: Failed to install yfinance even in a virtual environment")
                 sys.exit(1)
 
+# Add support for Twelvedata API for real-time prices
+try:
+    from twelvedata import TDClient
+    print("twelvedata package loaded successfully")
+except ImportError:
+    print("ERROR: twelvedata package not found. Installing...")
+    import subprocess
+    
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "twelvedata", "--break-system-packages"])
+        from twelvedata import TDClient
+        print("twelvedata package installed successfully")
+    except (subprocess.CalledProcessError, ImportError) as e:
+        print(f"Failed to install twelvedata: {e}")
+        
+        # Check if we're running in a virtual environment
+        in_venv = sys.prefix != sys.base_prefix
+        
+        if not in_venv:
+            print("\nERROR: Cannot install twelvedata in an externally managed environment.")
+            print("Please use one of the following methods:")
+            print("1. Create and activate a virtual environment first:")
+            print("   python3 -m venv venv")
+            print("   source venv/bin/activate")
+            print("   Then run this script again")
+            print("2. Install twelvedata manually before running this script:")
+            print("   pip3 install 'twelvedata[websocket]' --break-system-packages --user")
+            print("NOTE: The twelvedata integration is optional and the server will still work with yfinance.")
+        else:
+            # If we're in a venv but still failed, try without the flag
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "twelvedata[websocket]"])
+                from twelvedata import TDClient
+                print("twelvedata package installed successfully in virtual environment")
+            except:
+                print("ERROR: Failed to install twelvedata even in a virtual environment")
+                print("NOTE: The twelvedata integration is optional and the server will still work with yfinance.")
+
 # Configuration
 PORT = 3000
 ALLOWED_ORIGINS = ['http://localhost:8000', 'http://localhost:3000', 'http://127.0.0.1:8000', 'https://akashpatelresume.us', '*']
@@ -125,6 +163,142 @@ except Exception as e:
 stock_cache = {}
 crypto_cache = {}
 last_cache_update = 0
+
+# Twelvedata API Key (set as environment variable for security)
+TWELVEDATA_API_KEY = os.environ.get('TWELVEDATA_API_KEY', '')
+
+# Flag to track if Twelvedata is enabled
+twelvedata_enabled = TWELVEDATA_API_KEY != '' and 'TDClient' in globals()
+
+# Twelvedata websocket client
+td_client = None
+ws_connection = None
+
+class TwelvedataManager:
+    """Manages the Twelvedata websocket connection and data"""
+    
+    def __init__(self, api_key, symbols):
+        self.api_key = api_key
+        self.symbols = symbols
+        self.client = TDClient(apikey=api_key)
+        self.ws = None
+        self.connected = False
+        self.last_prices = {}
+    
+    def on_event(self, event):
+        """Handle websocket events from Twelvedata"""
+        try:
+            # Print the event for debugging
+            print(f"Twelvedata event: {event}")
+            
+            # Process the price update
+            if 'price' in event and 'symbol' in event:
+                symbol = event['symbol']
+                price = float(event['price'])
+                
+                # Store the price in our last_prices dictionary
+                self.last_prices[symbol] = {
+                    'price': price,
+                    'timestamp': datetime.now()
+                }
+                
+                # Update MongoDB if available
+                if mongo_client:
+                    # Get previous price from MongoDB for change calculation
+                    prev_data = current_collection.find_one({"symbol": symbol})
+                    prev_price = prev_data.get('raw_price', price) if prev_data else price
+                    
+                    # Calculate change
+                    change = price - prev_price
+                    change_percent = ((price / prev_price) - 1) * 100 if prev_price else 0
+                    
+                    # Determine if it's a crypto symbol
+                    is_crypto = any(crypto in symbol.upper() for crypto in ['BTC', 'ETH', 'XRP', 'DOGE']) or '-USD' in symbol.upper()
+                    
+                    # Format price based on type (more decimal places for crypto)
+                    price_str = f"{price:.4f}" if is_crypto and price < 1 else f"{price:.2f}"
+                    change_str = f"{change:.4f}" if is_crypto and abs(change) < 1 else f"{change:.2f}"
+                    
+                    # Format percent change with sign
+                    change_percent_str = f"{'+' if change_percent >= 0 else ''}{change_percent:.2f}%"
+                    
+                    # Extract just the symbol part (e.g., BTC-USD → BTC)
+                    display_symbol = symbol.split('-')[0]
+                    
+                    # Update MongoDB with real-time data
+                    current_collection.update_one(
+                        {"symbol": symbol},
+                        {"$set": {
+                            "symbol": display_symbol,
+                            "price": price_str,
+                            "change": change_str,
+                            "changePercent": change_percent_str,
+                            "raw_price": price,
+                            "raw_change": change,
+                            "raw_change_percent": change_percent,
+                            "last_updated": datetime.now(),
+                            "source": "twelvedata_websocket"
+                        }},
+                        upsert=True
+                    )
+                    
+                    # Add historical data point
+                    historical_collection.insert_one({
+                        "symbol": symbol,
+                        "price": price,
+                        "timestamp": datetime.now(),
+                        "source": "twelvedata_websocket"
+                    })
+                    
+                    print(f"Updated MongoDB with real-time price for {symbol}: {price_str}")
+        except Exception as e:
+            print(f"Error processing Twelvedata event: {e}")
+    
+    def connect(self):
+        """Initialize and connect the websocket client"""
+        if not self.api_key:
+            print("Twelvedata API key is not set, websocket connection disabled")
+            return False
+            
+        try:
+            print(f"Initializing Twelvedata websocket connection for symbols: {self.symbols}")
+            self.ws = self.client.websocket(symbols=self.symbols, on_event=self.on_event)
+            self.ws.connect()
+            self.connected = True
+            print("Twelvedata websocket connected successfully")
+            return True
+        except Exception as e:
+            print(f"Error connecting to Twelvedata websocket: {e}")
+            self.connected = False
+            return False
+    
+    def keep_alive(self):
+        """Start the websocket connection and keep it alive in a background thread"""
+        if self.connected and self.ws:
+            import threading
+            thread = threading.Thread(target=self._keep_alive_thread)
+            thread.daemon = True
+            thread.start()
+            return True
+        return False
+    
+    def _keep_alive_thread(self):
+        """Thread function to keep the websocket alive"""
+        try:
+            print("Starting Twelvedata websocket keep_alive thread")
+            self.ws.keep_alive()
+        except Exception as e:
+            print(f"Error in Twelvedata websocket keep_alive thread: {e}")
+            self.connected = False
+
+# Initialize Twelvedata if API key is available
+if twelvedata_enabled:
+    print("Twelvedata API integration enabled")
+    all_symbols = STOCK_SYMBOLS + CRYPTO_SYMBOLS
+    td_manager = TwelvedataManager(TWELVEDATA_API_KEY, all_symbols)
+else:
+    print("Twelvedata API integration disabled (no API key or package not installed)")
+    td_manager = None
 
 print(f"Starting yfinance stock data server on port {PORT}")
 
@@ -276,29 +450,67 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
         }, 404)
     
     def _get_stock_data(self, symbol):
-        """Fetch stock data for a symbol using yfinance and save to MongoDB"""
-        data = get_stock_data(symbol)
+        """Fetch stock data for a symbol using Twelvedata (if available) or yfinance"""
+        if twelvedata_enabled and td_manager and td_manager.connected:
+            # Try to get real-time data from Twelvedata websocket
+            if symbol in td_manager.last_prices:
+                price_data = td_manager.last_prices[symbol]
+                price = price_data['price']
+                
+                # Get yesterday's close from MongoDB for change calculation if available
+                yesterday_close = None
+                if mongo_client:
+                    prev_data = current_collection.find_one({"symbol": symbol})
+                    if prev_data and 'prev_close' in prev_data:
+                        yesterday_close = prev_data['prev_close']
+                
+                if yesterday_close is None:
+                    # Fallback to yfinance for previous close
+                    try:
+                        ticker = yf.Ticker(symbol)
+                        info = ticker.info
+                        yesterday_close = info.get('previousClose', price)
+                    except:
+                        # If that fails too, use the current price as previous close
+                        yesterday_close = price
+                
+                # Calculate change
+                change = price - yesterday_close
+                change_percent = ((price / yesterday_close) - 1) * 100 if yesterday_close else 0
+                
+                # Format as needed
+                is_crypto = any(crypto in symbol.upper() for crypto in ['BTC', 'ETH', 'XRP', 'DOGE']) or '-USD' in symbol.upper()
+                price_str = f"{price:.4f}" if is_crypto and price < 1 else f"{price:.2f}"
+                change_str = f"{change:.4f}" if is_crypto and abs(change) < 1 else f"{change:.2f}"
+                change_percent_str = f"{'+' if change_percent >= 0 else ''}{change_percent:.2f}%"
+                display_symbol = symbol.split('-')[0]
+                
+                return {
+                    'symbol': display_symbol,
+                    'price': price_str,
+                    'change': change_str,
+                    'changePercent': change_percent_str,
+                    'raw_price': price,
+                    'raw_change': change,
+                    'raw_change_percent': change_percent,
+                    'prev_close': yesterday_close,
+                    'last_updated': datetime.now().isoformat(),
+                    'source': 'twelvedata_websocket'
+                }
         
-        # Save to MongoDB if available
+        # Fall back to getting data from MongoDB or yfinance
         if mongo_client:
-            try:
-                # Update current price in the current collection
-                current_collection.update_one(
-                    {"symbol": symbol},
-                    {"$set": data},
-                    upsert=True
-                )
-                
-                # Add to historical collection
-                historical_data = data.copy()
-                historical_data['timestamp'] = datetime.now()
-                historical_collection.insert_one(historical_data)
-                
-                print(f"Saved {symbol} data to MongoDB")
-            except Exception as e:
-                print(f"Error saving {symbol} to MongoDB: {e}")
+            data = current_collection.find_one({"symbol": symbol})
+            if data:
+                # Remove MongoDB _id field
+                data.pop('_id', None)
+                # Convert datetime objects to ISO format strings
+                if isinstance(data.get('last_updated'), datetime):
+                    data['last_updated'] = data['last_updated'].isoformat()
+                return data
         
-        return data
+        # Fall back to yfinance if no data in MongoDB or Twelvedata
+        return get_stock_data(symbol)
     
     def _get_historical_data(self, symbol, days=30):
         """Get historical data for a symbol from MongoDB or YFinance"""
@@ -361,22 +573,30 @@ def run_server():
     class ThreadedHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         allow_reuse_address = True
     
+    # Initial cache refresh
     try:
-        httpd = ThreadedHTTPServer(("", PORT), StockDataHandler)
-        print(f"yfinance stock data server running at http://localhost:{PORT}")
-        
-        # Initialize the cache on startup
-        print("Initializing stock and crypto cache...")
         refresh_cache()
-        
-        httpd.serve_forever()
-    except OSError as e:
-        if e.errno == 48:  # Address already in use
-            print(f"ERROR: Port {PORT} is already in use. Try killing any existing processes on this port.")
-            print(f"You can use 'lsof -i :{PORT}' to find processes using this port.")
-            sys.exit(1)
+    except Exception as e:
+        print(f"Error during initial cache refresh: {e}")
+    
+    # Start Twelvedata websocket if enabled
+    if twelvedata_enabled and td_manager:
+        connected = td_manager.connect()
+        if connected:
+            td_manager.keep_alive()
+            print("Twelvedata websocket connection started in background")
         else:
-            raise
+            print("Failed to connect to Twelvedata websocket, falling back to yfinance")
+    
+    # Start the HTTP server
+    try:
+        with ThreadedHTTPServer(("", PORT), StockDataHandler) as httpd:
+            print(f"Server running at http://localhost:{PORT}")
+            httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("Server stopped by user")
+    except Exception as e:
+        print(f"Server error: {e}")
 
 # Helper function to refresh cache outside of the handler class
 def refresh_cache():
