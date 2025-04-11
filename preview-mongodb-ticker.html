@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MongoDB Stock Ticker Preview</title>
+    <!-- Add Chart.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .ticker-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .ticker-item {
+            padding: 15px;
+            border-radius: 6px;
+            background-color: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            width: calc(20% - 15px);
+            min-width: 150px;
+            transition: transform 0.2s;
+            border-left: 5px solid #5a67d8;
+        }
+        .ticker-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .symbol {
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 5px;
+        }
+        .price {
+            font-size: 1.4em;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .change {
+            font-size: 0.9em;
+            padding: 3px 6px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .positive {
+            background-color: rgba(0, 200, 83, 0.15);
+            color: #00a852;
+        }
+        .negative {
+            background-color: rgba(255, 76, 76, 0.15);
+            color: #ff4c4c;
+        }
+        .crypto {
+            border-left-color: #f6ad55;
+        }
+        .stock {
+            border-left-color: #5a67d8;
+        }
+        .updated {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 20px;
+        }
+        button {
+            background-color: #5a67d8;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #4c56c5;
+        }
+        .loading {
+            display: inline-block;
+            margin-left: 10px;
+            font-style: italic;
+            color: #888;
+        }
+        .error {
+            color: #ff4c4c;
+            padding: 10px;
+            background-color: rgba(255, 76, 76, 0.15);
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .stats {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8fafc;
+            border-radius: 6px;
+        }
+        .connection-status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin-left: 10px;
+            font-size: 0.9em;
+        }
+        .connected {
+            background-color: rgba(0, 200, 83, 0.15);
+            color: #00a852;
+        }
+        .disconnected {
+            background-color: rgba(255, 76, 76, 0.15);
+            color: #ff4c4c;
+        }
+        .chart-container {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .chart-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .chart-symbol-selector {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+        .chart-days-selector {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MongoDB Stock Ticker Preview</h1>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div>
+            <button id="refreshBtn">Refresh Data</button>
+            <span id="loading" class="loading" style="display: none;">Loading...</span>
+            <span>MongoDB Status: 
+                <span id="mongoStatus" class="connection-status">Checking...</span>
+            </span>
+        </div>
+        
+        <h2>Stocks</h2>
+        <div id="stockTicker" class="ticker-container">
+            <div class="ticker-item stock">
+                <div class="symbol">Loading...</div>
+                <div class="price">---.--</div>
+                <div class="change">---.--</div>
+            </div>
+        </div>
+        
+        <h2>Cryptocurrencies</h2>
+        <div id="cryptoTicker" class="ticker-container">
+            <div class="ticker-item crypto">
+                <div class="symbol">Loading...</div>
+                <div class="price">---.--</div>
+                <div class="change">---.--</div>
+            </div>
+        </div>
+        
+        <div class="updated">Last updated: <span id="lastUpdated">--</span></div>
+        
+        <!-- Historical Chart Section -->
+        <div class="chart-container">
+            <div class="chart-header">
+                <h2>Historical Price Data</h2>
+                <div class="chart-controls">
+                    <select id="chartSymbol" class="chart-symbol-selector">
+                        <option value="AAPL">AAPL</option>
+                        <option value="MSFT">MSFT</option>
+                        <option value="GOOGL">GOOGL</option>
+                        <option value="NVDA">NVDA</option>
+                        <option value="META">META</option>
+                        <option value="TSLA">TSLA</option>
+                        <option value="SPY">SPY</option>
+                        <option value="BTC">BTC</option>
+                        <option value="ETH">ETH</option>
+                    </select>
+                    <select id="chartDays" class="chart-days-selector">
+                        <option value="5">5 Days</option>
+                        <option value="10">10 Days</option>
+                        <option value="30" selected>30 Days</option>
+                    </select>
+                    <button id="loadChartBtn">Update Chart</button>
+                </div>
+            </div>
+            <canvas id="priceChart"></canvas>
+        </div>
+        
+        <div class="stats">
+            <h3>Stats</h3>
+            <p>Server: <span id="serverInfo">--</span></p>
+            <p>Endpoint: <span id="endpoint">http://localhost:3000</span></p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const stockContainer = document.getElementById('stockTicker');
+            const cryptoContainer = document.getElementById('cryptoTicker');
+            const lastUpdated = document.getElementById('lastUpdated');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const loading = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const mongoStatus = document.getElementById('mongoStatus');
+            const serverInfo = document.getElementById('serverInfo');
+            const chartSymbol = document.getElementById('chartSymbol');
+            const chartDays = document.getElementById('chartDays');
+            const loadChartBtn = document.getElementById('loadChartBtn');
+            
+            // API endpoint
+            const API_URL = 'http://localhost:3000';
+            
+            // Chart.js instance
+            let priceChart = null;
+            
+            // Function to format timestamp
+            function formatTime(isoString) {
+                const date = new Date(isoString);
+                return date.toLocaleTimeString();
+            }
+            
+            // Function to format date for chart
+            function formatChartDate(isoString) {
+                const date = new Date(isoString);
+                return date.toLocaleDateString();
+            }
+            
+            // Function to check if a symbol is crypto
+            function isCrypto(symbol) {
+                return ['BTC', 'ETH', 'XRP', 'DOGE'].includes(symbol);
+            }
+            
+            // Function to fetch health status
+            async function checkHealth() {
+                try {
+                    const response = await fetch(`${API_URL}/health`);
+                    if (!response.ok) throw new Error('Failed to connect to server');
+                    
+                    const data = await response.json();
+                    
+                    // Update MongoDB status
+                    if (data.mongo_connected) {
+                        mongoStatus.textContent = 'Connected';
+                        mongoStatus.className = 'connection-status connected';
+                    } else {
+                        mongoStatus.textContent = 'Disconnected';
+                        mongoStatus.className = 'connection-status disconnected';
+                    }
+                    
+                    // Update server info
+                    serverInfo.textContent = data.message;
+                    
+                    return true;
+                } catch (error) {
+                    mongoStatus.textContent = 'Disconnected';
+                    mongoStatus.className = 'connection-status disconnected';
+                    showError('Server connection error: ' + error.message);
+                    return false;
+                }
+            }
+            
+            // Function to fetch stock data
+            async function fetchTickerData() {
+                loading.style.display = 'inline-block';
+                errorDiv.style.display = 'none';
+                
+                try {
+                    // Check health first
+                    const isHealthy = await checkHealth();
+                    if (!isHealthy) return;
+                    
+                    // Fetch quotes
+                    const response = await fetch(`${API_URL}/api/quotes`);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    
+                    const data = await response.json();
+                    
+                    // Clear containers
+                    stockContainer.innerHTML = '';
+                    cryptoContainer.innerHTML = '';
+                    
+                    // Process data
+                    data.forEach(item => {
+                        if (!item || !item.symbol) return; // Skip invalid items
+                        
+                        const tickerItem = document.createElement('div');
+                        tickerItem.className = `ticker-item ${isCrypto(item.symbol) ? 'crypto' : 'stock'}`;
+                        
+                        const isPositive = !item.changePercent.includes('-');
+                        
+                        tickerItem.innerHTML = `
+                            <div class="symbol">${item.symbol}</div>
+                            <div class="price">$${item.price}</div>
+                            <div class="change ${isPositive ? 'positive' : 'negative'}">${item.changePercent}</div>
+                        `;
+                        
+                        if (isCrypto(item.symbol)) {
+                            cryptoContainer.appendChild(tickerItem);
+                        } else {
+                            stockContainer.appendChild(tickerItem);
+                        }
+                    });
+                    
+                    // Update last updated time
+                    if (data.length > 0 && data[0].last_updated) {
+                        lastUpdated.textContent = formatTime(data[0].last_updated);
+                    } else {
+                        lastUpdated.textContent = new Date().toLocaleTimeString();
+                    }
+                    
+                } catch (error) {
+                    showError('Failed to fetch ticker data: ' + error.message);
+                } finally {
+                    loading.style.display = 'none';
+                }
+            }
+            
+            // Function to fetch historical data and update chart
+            async function updateChart() {
+                const symbol = chartSymbol.value;
+                const days = chartDays.value;
+                
+                loading.style.display = 'inline-block';
+                errorDiv.style.display = 'none';
+                
+                try {
+                    const response = await fetch(`${API_URL}/api/historical/${symbol}?days=${days}`);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    
+                    const data = await response.json();
+                    
+                    // Sort data by timestamp ascending
+                    data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                    
+                    // Prepare chart data
+                    const labels = data.map(item => formatChartDate(item.timestamp));
+                    const prices = data.map(item => parseFloat(item.price));
+                    
+                    // Create or update chart
+                    if (priceChart) {
+                        priceChart.data.labels = labels;
+                        priceChart.data.datasets[0].data = prices;
+                        priceChart.data.datasets[0].label = `${symbol} Price`;
+                        priceChart.update();
+                    } else {
+                        const ctx = document.getElementById('priceChart').getContext('2d');
+                        priceChart = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    label: `${symbol} Price`,
+                                    data: prices,
+                                    borderColor: isCrypto(symbol) ? '#f6ad55' : '#5a67d8',
+                                    backgroundColor: isCrypto(symbol) ? 'rgba(246, 173, 85, 0.1)' : 'rgba(90, 103, 216, 0.1)',
+                                    tension: 0.3,
+                                    fill: true,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: isCrypto(symbol) ? '#f6ad55' : '#5a67d8'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    title: {
+                                        display: true,
+                                        text: `${symbol} Price History (${days} Days)`,
+                                        font: {
+                                            size: 16
+                                        }
+                                    },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                return `Price: $${context.parsed.y.toFixed(2)}`;
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        grid: {
+                                            display: false
+                                        }
+                                    },
+                                    y: {
+                                        ticks: {
+                                            callback: function(value) {
+                                                return '$' + value.toFixed(2);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    
+                } catch (error) {
+                    showError('Failed to fetch historical data: ' + error.message);
+                } finally {
+                    loading.style.display = 'none';
+                }
+            }
+            
+            // Function to show error
+            function showError(message) {
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+            }
+            
+            // Event listeners
+            refreshBtn.addEventListener('click', fetchTickerData);
+            loadChartBtn.addEventListener('click', updateChart);
+            
+            // Initial load
+            fetchTickerData();
+            updateChart();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(fetchTickerData, 30000);
+        });
+    </script>
+</body>
+</html> 

@@ -8,6 +8,13 @@ import time
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 
+# Custom JSON encoder to handle datetime objects
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super(DateTimeEncoder, self).default(obj)
+
 # Import MongoDB client
 try:
     from pymongo import MongoClient
@@ -147,7 +154,7 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
     
     def _json_response(self, data, status_code=200):
         self._set_headers(status_code)
-        response = json.dumps(data).encode()
+        response = json.dumps(data, cls=DateTimeEncoder).encode()
         self.wfile.write(response)
     
     def do_OPTIONS(self):
@@ -316,9 +323,12 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
         # Format the data
         result = []
         for date, row in hist.iterrows():
+            # Convert pandas timestamp to Python datetime for JSON serialization
+            timestamp = date.to_pydatetime()
+            
             data_point = {
                 "symbol": symbol,
-                "timestamp": date.to_pydatetime(),
+                "timestamp": timestamp,
                 "price": f"{row['Close']:.2f}",
                 "open": f"{row['Open']:.2f}",
                 "high": f"{row['High']:.2f}",
@@ -330,9 +340,11 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
             # Save to MongoDB if available
             if mongo_client:
                 try:
+                    # Convert datetime objects to strings for MongoDB storage
+                    mongo_data = data_point.copy()
                     historical_collection.update_one(
-                        {"symbol": symbol, "timestamp": data_point["timestamp"]},
-                        {"$set": data_point},
+                        {"symbol": symbol, "timestamp": timestamp},
+                        {"$set": mongo_data},
                         upsert=True
                     )
                 except Exception as e:
