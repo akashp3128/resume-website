@@ -9,6 +9,7 @@ export CACHE_DURATION=${CACHE_DURATION:-300}
 export RETRY_ATTEMPTS=${RETRY_ATTEMPTS:-5}
 export RETRY_DELAY=${RETRY_DELAY:-5}
 export LOG_LEVEL=${LOG_LEVEL:-INFO}
+export CMC_API_KEY=${CMC_API_KEY:-""}
 
 echo "Starting with configuration:"
 echo "PORT: $PORT"
@@ -16,6 +17,7 @@ echo "MONGO_HOST: $MONGO_HOST"
 echo "CACHE_DURATION: $CACHE_DURATION"
 echo "RETRY_ATTEMPTS: $RETRY_ATTEMPTS"
 echo "LOG_LEVEL: $LOG_LEVEL"
+echo "CMC_API_KEY: ${CMC_API_KEY:0:5}... (masked for security)"
 
 # Wait for MongoDB to be ready
 echo "Waiting for MongoDB to be ready..."
@@ -33,6 +35,12 @@ for i in {1..30}; do
     sleep 2
   fi
 done
+
+# Check if CMC_API_KEY is set
+if [ -z "$CMC_API_KEY" ]; then
+  echo "WARNING: CMC_API_KEY is not set. The server may not function correctly."
+  echo "Please set the CMC_API_KEY environment variable or add it to the .env file."
+fi
 
 # Make script executable (in case of permission issues)
 chmod +x crypto-data-server.py

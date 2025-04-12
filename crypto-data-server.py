@@ -18,16 +18,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger("CryptoServer")
 
-# JSON encoder to properly handle datetime objects
+# JSON encoder to properly handle datetime objects and MongoDB ObjectId
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
+        # Handle MongoDB ObjectId
+        try:
+            from bson import ObjectId
+            if isinstance(obj, ObjectId):
+                return str(obj)
+        except ImportError:
+            pass
         return super(DateTimeEncoder, self).default(obj)
 
 # Try to import MongoDB for persistence
 try:
     from pymongo import MongoClient
+    from bson import ObjectId
     logger.info("MongoDB support enabled")
     USE_MONGODB = True
 except ImportError:
@@ -39,31 +47,51 @@ PORT = 3003  # Different from stock server to avoid conflicts
 MAX_PORT_ATTEMPTS = 5
 ALLOWED_ORIGINS = ['http://localhost:8000', 'http://localhost:3000', 'http://127.0.0.1:8000', 'https://akashpatelresume.us', '*']
 
-# CoinGecko API configuration
-COINGECKO_API_URL = "https://api.coingecko.com/api/v3"
-# Top cryptocurrencies by market cap
-CRYPTO_IDS = [
-    'bitcoin', 'ethereum', 'ripple', 'dogecoin', 'solana', 
-    'cardano', 'polkadot', 'matic-network', 'chainlink', 'avalanche-2'
+# CoinMarketCap API configuration
+CMC_API_URL = "https://pro-api.coinmarketcap.com/v1"
+CMC_API_KEY = os.environ.get('CMC_API_KEY', '')  # Get API key from environment variable
+
+# If API key is not set, try to load from .env file
+if not CMC_API_KEY:
+    try:
+        with open('.env', 'r') as f:
+            for line in f:
+                if line.startswith('CMC_API_KEY='):
+                    CMC_API_KEY = line.strip().split('=', 1)[1].strip()
+                    if CMC_API_KEY.startswith('"') and CMC_API_KEY.endswith('"'):
+                        CMC_API_KEY = CMC_API_KEY[1:-1]
+                    break
+    except Exception as e:
+        logger.warning(f"Could not load CMC_API_KEY from .env file: {e}")
+
+if not CMC_API_KEY:
+    logger.warning("CoinMarketCap API key not found. Please set the CMC_API_KEY environment variable.")
+    logger.warning("The server will run with limited functionality.")
+
+# Top cryptocurrencies to track
+CRYPTO_SYMBOLS = [
+    'BTC', 'ETH', 'XRP', 'DOGE', 'SOL', 
+    'ADA', 'DOT', 'MATIC', 'LINK', 'AVAX'
 ]
-# Display symbol mapping
-CRYPTO_SYMBOL_MAP = {
-    'bitcoin': 'BTC',
-    'ethereum': 'ETH',
-    'ripple': 'XRP',
-    'dogecoin': 'DOGE',
-    'solana': 'SOL',
-    'cardano': 'ADA',
-    'polkadot': 'DOT',
-    'matic-network': 'MATIC',
-    'chainlink': 'LINK',
-    'avalanche-2': 'AVAX'
+
+# Map of symbols to full names (will be populated from API)
+CRYPTO_NAME_MAP = {
+    'BTC': 'Bitcoin',
+    'ETH': 'Ethereum',
+    'XRP': 'XRP',
+    'DOGE': 'Dogecoin',
+    'SOL': 'Solana',
+    'ADA': 'Cardano',
+    'DOT': 'Polkadot',
+    'MATIC': 'Polygon',
+    'LINK': 'Chainlink',
+    'AVAX': 'Avalanche'
 }
 
 # Cache settings
-CACHE_DURATION = 300  # 5 minutes 
-RATE_LIMIT_COOLDOWN = 300  # 5 minute cooldown if we hit rate limits (increased from 1 min)
-RETRY_ATTEMPTS = 5  # Number of times to retry if rate limited (increased from 3)
+CACHE_DURATION = int(os.environ.get('CACHE_DURATION', 300))  # 5 minutes 
+RATE_LIMIT_COOLDOWN = int(os.environ.get('RATE_LIMIT_COOLDOWN', 300))  # 5 minute cooldown if we hit rate limits
+RETRY_ATTEMPTS = int(os.environ.get('RETRY_ATTEMPTS', 5))  # Number of times to retry if rate limited
 MAX_BACKOFF_TIME = 30  # Maximum backoff time in seconds
 
 # MongoDB Configuration (if available)
@@ -94,7 +122,7 @@ last_cache_update = 0
 rate_limit_until = 0  # Timestamp when we can try again after hitting rate limits
 
 def fetch_crypto_data():
-    """Fetch data for all cryptocurrencies in a single API call"""
+    """Fetch data for cryptocurrencies from CoinMarketCap API"""
     global rate_limit_until
     
     # Check if we're in a rate limit cooldown
@@ -103,19 +131,25 @@ def fetch_crypto_data():
         logger.warning(f"Rate limit cooldown active. Retry in {cooldown_remaining} seconds")
         return None
     
+    if not CMC_API_KEY:
+        logger.error("Cannot fetch data: CoinMarketCap API key not set")
+        return None
+    
     for attempt in range(RETRY_ATTEMPTS):
         try:
-            logger.info(f"Fetching crypto data from CoinGecko (attempt {attempt+1}/{RETRY_ATTEMPTS})")
+            logger.info(f"Fetching crypto data from CoinMarketCap (attempt {attempt+1}/{RETRY_ATTEMPTS})")
             
-            # Make a single API call for all cryptos
+            # Prepare headers with API key
+            headers = {
+                'X-CMC_PRO_API_KEY': CMC_API_KEY,
+                'Accept': 'application/json',
+                'User-Agent': 'AkashPatelResume/1.0'
+            }
+            
+            # Make API call to get latest listings
             params = {
-                'vs_currency': 'usd',
-                'ids': ','.join(CRYPTO_IDS),
-                'order': 'market_cap_desc',
-                'per_page': 100,  # More than we need
-                'page': 1,
-                'sparkline': 'false',
-                'price_change_percentage': '24h'
+                'symbol': ','.join(CRYPTO_SYMBOLS),
+                'convert': 'USD'
             }
             
             # Add a randomized sleep to help avoid hitting rate limits at the same time
@@ -126,17 +160,17 @@ def fetch_crypto_data():
                 time.sleep(sleep_time)
             
             response = requests.get(
-                f"{COINGECKO_API_URL}/coins/markets", 
+                f"{CMC_API_URL}/cryptocurrency/quotes/latest", 
                 params=params,
-                headers={'Accept': 'application/json', 'User-Agent': 'AkashPatelResume/1.0'},
+                headers=headers,
                 timeout=15  # Increased timeout
             )
             
-            # Check for rate limiting - important to handle this properly
+            # Check for rate limiting
             if response.status_code == 429:
                 # Note the rate limit and back off
                 logger.warning("Rate limit hit (429). Backing off...")
-                # Inspect headers for retry-after if available
+                # Get retry-after header if available
                 retry_after = int(response.headers.get('Retry-After', RATE_LIMIT_COOLDOWN))
                 rate_limit_until = time.time() + retry_after
                 continue  # Try again if we have attempts left
@@ -146,14 +180,19 @@ def fetch_crypto_data():
             
             # Process the response
             data = response.json()
-            if not isinstance(data, list):
-                logger.error(f"Unexpected response format: {type(data)}")
+            if 'status' not in data or data['status']['error_code'] != 0:
+                error_message = data.get('status', {}).get('error_message', 'Unknown error')
+                logger.error(f"API error: {error_message}")
                 return None
                 
-            logger.info(f"Successfully fetched data for {len(data)} cryptocurrencies")
+            if 'data' not in data:
+                logger.error("No data in API response")
+                return None
+                
+            logger.info(f"Successfully fetched data for cryptocurrencies")
             
             # Process and return the data
-            return process_crypto_data(data)
+            return process_crypto_data(data['data'])
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Request error: {e}")
@@ -170,39 +209,42 @@ def fetch_crypto_data():
     return None
 
 def process_crypto_data(data):
-    """Process raw CoinGecko data into our standard format"""
+    """Process raw CoinMarketCap data into our standard format"""
     processed_data = []
     timestamp = datetime.now()
     
-    for coin in data:
+    for symbol, coin_data in data.items():
         try:
-            coin_id = coin.get('id')
-            if not coin_id or coin_id not in CRYPTO_IDS:
+            # Skip if not in our list
+            if symbol not in CRYPTO_SYMBOLS:
                 continue
                 
-            # Get known values with safety checks
-            symbol = CRYPTO_SYMBOL_MAP.get(coin_id, coin.get('symbol', '').upper())
-            name = coin.get('name', '')
-            price = coin.get('current_price')
-            market_cap = coin.get('market_cap')
-            volume = coin.get('total_volume')
-            change_24h = coin.get('price_change_percentage_24h')
+            # Get quote data
+            quote = coin_data.get('quote', {}).get('USD', {})
             
             # Skip if missing critical data
-            if price is None:
+            if not quote or 'price' not in quote:
                 logger.warning(f"Missing price data for {symbol}, skipping")
                 continue
                 
+            # Extract the data we need
+            name = coin_data.get('name', CRYPTO_NAME_MAP.get(symbol, symbol))
+            price = quote.get('price')
+            market_cap = quote.get('market_cap')
+            volume_24h = quote.get('volume_24h')
+            percent_change_24h = quote.get('percent_change_24h')
+            
             # Format our standard data structure
             coin_data = {
                 'symbol': symbol,
-                'coingecko_id': coin_id,
+                'cmc_id': coin_data.get('id'),
                 'name': name,
-                'price': float(price),
-                'change_percent_24h': float(change_24h) if change_24h is not None else 0,
-                'volume': float(volume) if volume is not None else 0,
+                'price': float(price) if price is not None else 0,
+                'change_percent_24h': float(percent_change_24h) if percent_change_24h is not None else 0,
+                'volume': float(volume_24h) if volume_24h is not None else 0,
                 'market_cap': float(market_cap) if market_cap is not None else 0,
-                'timestamp': timestamp
+                'timestamp': timestamp,
+                'last_updated': coin_data.get('last_updated')
             }
             
             processed_data.append(coin_data)
@@ -219,7 +261,10 @@ def process_crypto_data(data):
                     logger.error(f"MongoDB update error for {symbol}: {e}")
                     
             # Also update memory cache
-            crypto_cache[coin_id] = coin_data
+            crypto_cache[symbol] = coin_data
+            
+            # Log the price update
+            logger.info(f"Updated {symbol}: ${price:.2f}")
             
         except Exception as e:
             logger.error(f"Error processing coin data: {e}")
@@ -268,9 +313,12 @@ def restore_from_mongodb():
             
         # Update the memory cache
         for record in records:
-            coin_id = record.get('coingecko_id')
-            if coin_id:
-                crypto_cache[coin_id] = record
+            symbol = record.get('symbol')
+            if symbol:
+                # Convert _id to string for JSON serialization
+                if '_id' in record:
+                    record['_id'] = str(record['_id'])
+                crypto_cache[symbol] = record
                 
         # Update last cache time
         global last_cache_update
@@ -336,9 +384,10 @@ class CryptoDataHandler(http.server.BaseHTTPRequestHandler):
             if path == '/health':
                 self._json_response({
                     'status': 'ok', 
-                    'source': 'coingecko',
+                    'source': 'coinmarketcap',
                     'cache_status': cache_status,
-                    'rate_limit_reset': max(0, rate_limit_until - time.time())
+                    'rate_limit_reset': max(0, rate_limit_until - time.time()),
+                    'current_time': datetime.now().isoformat()
                 })
                 return
             
@@ -354,8 +403,23 @@ class CryptoDataHandler(http.server.BaseHTTPRequestHandler):
                 
             # Get specific crypto data
             if path.startswith('/api/crypto/'):
-                crypto_id_or_symbol = path.split('/')[-1]
-                self._get_specific_crypto(crypto_id_or_symbol)
+                crypto_symbol = path.split('/')[-1].upper()
+                self._get_specific_crypto(crypto_symbol)
+                return
+            
+            # Cache control endpoint - force refresh
+            if path == '/api/cache/refresh':
+                # Reset cache time to force refresh
+                global last_cache_update
+                last_cache_update = 0
+                # Fetch new data
+                success = refresh_cache()
+                self._json_response({
+                    'status': 'ok' if success else 'error',
+                    'message': 'Cache refreshed successfully' if success else 'Failed to refresh cache',
+                    'source': 'coinmarketcap',
+                    'current_time': datetime.now().isoformat()
+                })
                 return
             
             # Default response for unknown endpoints
@@ -407,57 +471,44 @@ class CryptoDataHandler(http.server.BaseHTTPRequestHandler):
         if time.time() < rate_limit_until:
             # We're rate limited
             self._json_response({
-                'error': 'Rate limited by CoinGecko API',
+                'error': 'Rate limited by CoinMarketCap API',
                 'retry_after': int(rate_limit_until - time.time())
             }, 429)
         else:
             # Something else is wrong
             self._json_response({'error': 'No cryptocurrency data available'}, 503)
     
-    def _get_specific_crypto(self, crypto_id_or_symbol):
+    def _get_specific_crypto(self, crypto_symbol):
         """Return data for a specific cryptocurrency"""
-        # Normalize input to find the right crypto
-        target_id = None
-        target_symbol = None
+        # Normalize input
+        crypto_symbol = crypto_symbol.upper()
         
-        # Check if this is a symbol (e.g., BTC)
-        for cg_id, symbol in CRYPTO_SYMBOL_MAP.items():
-            if symbol.lower() == crypto_id_or_symbol.lower():
-                target_id = cg_id
-                target_symbol = symbol
-                break
-                
-        # If not found by symbol, check if it's a direct ID (e.g., bitcoin)
-        if not target_id and crypto_id_or_symbol.lower() in CRYPTO_IDS:
-            target_id = crypto_id_or_symbol.lower()
-            target_symbol = CRYPTO_SYMBOL_MAP.get(target_id)
-            
-        # If we couldn't determine what they're asking for
-        if not target_id:
-            self._json_response({'error': f'Unknown cryptocurrency: {crypto_id_or_symbol}'}, 404)
+        # Check if this is a valid symbol
+        if crypto_symbol not in CRYPTO_SYMBOLS:
+            self._json_response({'error': f'Unknown cryptocurrency: {crypto_symbol}'}, 404)
             return
             
         # Check MongoDB first
         if USE_MONGODB:
             try:
-                record = current_prices.find_one({'symbol': target_symbol})
+                record = current_prices.find_one({'symbol': crypto_symbol})
                 if record:
                     if '_id' in record:
                         record['_id'] = str(record['_id'])
-                    logger.info(f"Returning {target_symbol} from MongoDB")
+                    logger.info(f"Returning {crypto_symbol} from MongoDB")
                     self._json_response(record)
                     return
             except Exception as e:
-                logger.error(f"MongoDB fetch error for {target_symbol}: {e}")
+                logger.error(f"MongoDB fetch error for {crypto_symbol}: {e}")
                 
         # Try memory cache
-        if target_id in crypto_cache:
-            logger.info(f"Returning {target_symbol} from memory cache")
-            self._json_response(crypto_cache[target_id])
+        if crypto_symbol in crypto_cache:
+            logger.info(f"Returning {crypto_symbol} from memory cache")
+            self._json_response(crypto_cache[crypto_symbol])
             return
             
         # If we don't have this crypto cached
-        self._json_response({'error': f'No data available for {crypto_id_or_symbol}'}, 404)
+        self._json_response({'error': f'No data available for {crypto_symbol}'}, 404)
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
@@ -471,7 +522,7 @@ def run_server():
         try:
             # Create and start the server
             httpd = ThreadedHTTPServer(("", PORT), CryptoDataHandler)
-            logger.info(f"CoinGecko crypto server running at http://localhost:{PORT}")
+            logger.info(f"CoinMarketCap crypto server running at http://localhost:{PORT}")
             
             # Initial cache population
             refresh_cache()
@@ -490,7 +541,7 @@ def run_server():
 
 if __name__ == "__main__":
     try:
-        logger.info("Starting CoinGecko crypto data server...")
+        logger.info("Starting CoinMarketCap crypto data server...")
         run_server()
     except KeyboardInterrupt:
         logger.info("Server stopped by user")

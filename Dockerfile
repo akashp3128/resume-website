@@ -27,6 +27,8 @@ ENV CACHE_DURATION=300
 ENV RETRY_ATTEMPTS=5
 ENV RETRY_DELAY=5
 ENV LOG_LEVEL=INFO
+# This should be overridden at runtime
+ENV CMC_API_KEY=""
 
 # Expose the server port
 EXPOSE 3003
