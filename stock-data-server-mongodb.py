@@ -131,6 +131,7 @@ except ImportError:
 
 # Configuration
 PORT = 3000
+MAX_PORT_ATTEMPTS = 5  # Try up to 5 different ports if the default is in use
 ALLOWED_ORIGINS = ['http://localhost:8000', 'http://localhost:3000', 'http://127.0.0.1:8000', 'https://akashpatelresume.us', '*']
 STOCK_SYMBOLS = []  # Removed stock symbols
 CRYPTO_SYMBOLS = [
@@ -178,6 +179,12 @@ twelvedata_enabled = TWELVEDATA_API_KEY != '' and 'TDClient' in globals()
 td_client = None
 ws_connection = None
 
+def get_symbol_key(symbol):
+    """Normalize symbol for consistent MongoDB keys"""
+    if '-' in symbol:
+        return symbol.split('-')[0]  # Extract BTC from BTC-USD
+    return symbol
+
 class TwelvedataManager:
     """Manages the Twelvedata websocket connection and crypto data"""
     
@@ -203,10 +210,12 @@ class TwelvedataManager:
                 # Update MongoDB if available
                 if mongo_client:
                     try:
+                        symbol_key = get_symbol_key(symbol)
                         current_collection.update_one(
-                            {"symbol": symbol},
+                            {"symbol": symbol_key},
                             {
                                 "$set": {
+                                    "full_symbol": symbol,
                                     "price": price,
                                     "timestamp": timestamp
                                 }
@@ -215,7 +224,8 @@ class TwelvedataManager:
                         )
                         
                         historical_collection.insert_one({
-                            "symbol": symbol,
+                            "symbol": symbol_key,
+                            "full_symbol": symbol,
                             "price": price,
                             "timestamp": timestamp
                         })
@@ -263,9 +273,19 @@ class TwelvedataManager:
     
     def stop(self):
         """Stop the websocket connection"""
-        if self.ws:
-            self.ws.stop()
-            self.connected = False
+        try:
+            if self.ws:
+                if hasattr(self.ws, 'stop'):
+                    self.ws.stop()
+                else:
+                    # Alternative method to close websocket if stop() doesn't exist
+                    if hasattr(self.ws, 'close') and callable(self.ws.close):
+                        self.ws.close()
+                    elif hasattr(self.ws, 'disconnect') and callable(self.ws.disconnect):
+                        self.ws.disconnect()
+        except Exception as e:
+            print(f"Error stopping websocket: {e}")
+        self.connected = False
 
 # Initialize Twelvedata if API key is available
 if TWELVEDATA_API_KEY and 'TDClient' in globals():
@@ -285,410 +305,355 @@ print(f"Starting yfinance stock data server on port {PORT}")
 
 class StockDataHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        """Override to provide more detailed logging"""
-        sys.stderr.write("%s - - [%s] %s\n" %
-                        (self.address_string(),
-                        self.log_date_time_string(),
-                        format % args))
+        """Override to customize logging"""
+        if args and args[0].startswith('GET /health'):
+            # Skip logging health check requests
+            return
+        
+        print("[%s] %s" % (self.log_date_time_string(), format % args))
     
     def _set_headers(self, status_code=200, content_type='application/json'):
+        """Set response headers with CORS support"""
         self.send_response(status_code)
-        self.send_header('Content-Type', content_type)
+        self.send_header('Content-type', content_type)
         
-        # Add CORS headers
+        # Handle CORS
         origin = self.headers.get('Origin', '')
-        print(f"Received request with origin: {origin}")
         
-        # Always add CORS headers - allow from all origins for testing
-        self.send_header('Access-Control-Allow-Origin', '*')
+        # Check if the origin is allowed
+        if origin in ALLOWED_ORIGINS or '*' in ALLOWED_ORIGINS:
+            self.send_header('Access-Control-Allow-Origin', origin)
+        else:
+            self.send_header('Access-Control-Allow-Origin', '*')
+            
         self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.send_header('Access-Control-Max-Age', '86400')
-        
+        self.send_header('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type')
         self.end_headers()
     
     def _json_response(self, data, status_code=200):
+        """Send JSON response"""
         self._set_headers(status_code)
-        response = json.dumps(data, cls=DateTimeEncoder).encode()
-        self.wfile.write(response)
+        self.wfile.write(json.dumps(data, cls=DateTimeEncoder).encode())
     
     def do_OPTIONS(self):
-        # Handle CORS preflight requests
-        print("Handling OPTIONS request (CORS preflight)")
+        """Handle CORS preflight requests"""
         self._set_headers()
-        self.wfile.write(b'')
     
     def do_GET(self):
-        print(f"Handling GET request for: {self.path}")
-        
-        # Parse the URL
-        parsed_url = urlparse(self.path)
-        path = parsed_url.path
-        query_params = parse_qs(parsed_url.query)
+        """Handle GET requests"""
+        # Parse the URL path
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+        query = parse_qs(parsed_path.query)
         
         # Health check endpoint
-        if path == '/health' or path == '/':
-            self._json_response({
-                'status': 'up',
-                'message': 'yfinance stock data server with MongoDB is running',
-                'mongo_connected': mongo_client is not None,
-                'timestamp': datetime.now().isoformat()
-            })
+        if path == '/health':
+            self._json_response({'status': 'ok'})
             return
         
-        # Historical data endpoint
+        # Get latest cryptocurrency prices
+        if path == '/api/crypto':
+            response = self._get_crypto_data()
+            self._json_response(response)
+            return
+        
+        # Get all stock and crypto prices 
+        if path == '/api/prices':
+            response = self._get_all_prices()
+            self._json_response(response)
+            return
+            
+        # Get specific stock data
+        if path.startswith('/api/stock/'):
+            symbol = path.split('/')[-1]
+            response = self._get_stock_data(symbol)
+            self._json_response(response)
+            return
+            
+        # Get historical data
         if path.startswith('/api/historical/'):
             symbol = path.split('/')[-1]
-            days = int(query_params.get('days', ['30'])[0])
-            print(f"Fetching historical data for: {symbol}, days: {days}")
-            
-            try:
-                historical_data = self._get_historical_data(symbol, days)
-                self._json_response(historical_data)
-            except Exception as e:
-                print(f"Error fetching historical data for {symbol}: {e}")
-                self._json_response({
-                    'error': f"Failed to fetch historical data for {symbol}: {str(e)}"
-                }, 500)
+            days = int(query.get('days', ['30'])[0])
+            response = self._get_historical_data(symbol, days)
+            self._json_response(response)
             return
         
-        # Single quote endpoint
-        if path.startswith('/api/quote/'):
-            symbol = path.split('/')[-1]
-            print(f"Fetching quote for: {symbol}")
-            
-            try:
-                # Get data for the symbol
-                quote_data = self._get_stock_data(symbol)
-                self._json_response(quote_data)
-            except Exception as e:
-                print(f"Error fetching data for {symbol}: {e}")
-                self._json_response({
-                    'error': f"Failed to fetch data for {symbol}: {str(e)}"
-                }, 500)
-            return
-        
-        # Multiple quotes endpoint
-        if path == '/api/quotes':
-            # Parse symbols parameter
-            symbols_param = query_params.get('symbols', [''])[0]
-            if not symbols_param:
-                symbols = STOCK_SYMBOLS + CRYPTO_SYMBOLS
-            else:
-                symbols = symbols_param.split(',')
-            
-            print(f"Fetching quotes for: {symbols}")
-            
-            try:
-                # Check if we should use the cache or refresh from API
-                current_time = time.time()
-                if current_time - last_cache_update > CACHE_DURATION:
-                    # Cache expired, refresh data
-                    self._refresh_cache()
-                
-                # Get data from MongoDB or cache
-                results = []
-                for symbol in symbols:
-                    if not symbol:
-                        continue
-                    
-                    # Get from MongoDB if available
-                    if mongo_client:
-                        data = current_collection.find_one({"symbol": symbol})
-                        if data:
-                            # Remove MongoDB _id field and convert to dict
-                            data.pop('_id', None)
-                            results.append(data)
-                            continue
-                    
-                    # Fallback to cache if MongoDB failed or data not found
-                    is_crypto = any(crypto in symbol.upper() for crypto in ['BTC', 'ETH', 'XRP', 'DOGE']) or '-USD' in symbol.upper()
-                    cache_to_use = crypto_cache if is_crypto else stock_cache
-                    
-                    if symbol in cache_to_use:
-                        results.append(cache_to_use[symbol])
-                    else:
-                        # Not in cache, fetch it directly
-                        try:
-                            quote_data = self._get_stock_data(symbol)
-                            results.append(quote_data)
-                            # Add to appropriate cache
-                            cache_to_use[symbol] = quote_data
-                        except Exception as e:
-                            print(f"Error fetching data for {symbol}: {e}")
-                
-                self._json_response(results)
-            except Exception as e:
-                print(f"Error fetching quotes: {e}")
-                self._json_response({
-                    'error': f"Failed to fetch quotes: {str(e)}"
-                }, 500)
-            return
-        
-        # If we reach here, path was not found
-        self._json_response({
-            'error': f"Endpoint not found: {path}"
-        }, 404)
+        # Default response for unknown endpoints
+        self._json_response({'error': 'Not found'}, 404)
     
     def _get_stock_data(self, symbol):
-        """Fetch stock data for a symbol using Twelvedata (if available) or yfinance"""
-        if twelvedata_enabled and td_manager and td_manager.connected:
-            # Try to get real-time data from Twelvedata websocket
-            if symbol in td_manager.last_prices:
-                price_data = td_manager.last_prices[symbol]
-                price = price_data['price']
-                
-                # Get yesterday's close from MongoDB for change calculation if available
-                yesterday_close = None
-                if mongo_client:
-                    prev_data = current_collection.find_one({"symbol": symbol})
-                    if prev_data and 'prev_close' in prev_data:
-                        yesterday_close = prev_data['prev_close']
-                
-                if yesterday_close is None:
-                    # Fallback to yfinance for previous close
-                    try:
-                        ticker = yf.Ticker(symbol)
-                        info = ticker.info
-                        yesterday_close = info.get('previousClose', price)
-                    except:
-                        # If that fails too, use the current price as previous close
-                        yesterday_close = price
-                
-                # Calculate change
-                change = price - yesterday_close
-                change_percent = ((price / yesterday_close) - 1) * 100 if yesterday_close else 0
-                
-                # Format as needed
-                is_crypto = any(crypto in symbol.upper() for crypto in ['BTC', 'ETH', 'XRP', 'DOGE']) or '-USD' in symbol.upper()
-                price_str = f"{price:.4f}" if is_crypto and price < 1 else f"{price:.2f}"
-                change_str = f"{change:.4f}" if is_crypto and abs(change) < 1 else f"{change:.2f}"
-                change_percent_str = f"{'+' if change_percent >= 0 else ''}{change_percent:.2f}%"
-                display_symbol = symbol.split('-')[0]
-                
-                return {
-                    'symbol': display_symbol,
-                    'price': price_str,
-                    'change': change_str,
-                    'changePercent': change_percent_str,
-                    'raw_price': price,
-                    'raw_change': change,
-                    'raw_change_percent': change_percent,
-                    'prev_close': yesterday_close,
-                    'last_updated': datetime.now().isoformat(),
-                    'source': 'twelvedata_websocket'
-                }
-        
-        # Fall back to getting data from MongoDB or yfinance
+        """Get data for a specific stock or crypto"""
+        # Check MongoDB first
         if mongo_client:
-            data = current_collection.find_one({"symbol": symbol})
-            if data:
-                # Remove MongoDB _id field
-                data.pop('_id', None)
-                # Convert datetime objects to ISO format strings
-                if isinstance(data.get('last_updated'), datetime):
-                    data['last_updated'] = data['last_updated'].isoformat()
-                return data
+            try:
+                # Use normalized symbol key
+                symbol_key = get_symbol_key(symbol)
+                record = current_collection.find_one({"symbol": symbol_key})
+                
+                if record:
+                    # Convert MongoDB ObjectId to string
+                    if '_id' in record:
+                        record['_id'] = str(record['_id'])
+                    return record
+            except Exception as e:
+                print(f"Error fetching {symbol} from MongoDB: {e}")
         
-        # Fall back to yfinance if no data in MongoDB or Twelvedata
-        return get_stock_data(symbol)
+        # Check cache if not in MongoDB
+        if "-USD" in symbol:
+            if symbol in crypto_cache:
+                return crypto_cache[symbol]
+        elif symbol in stock_cache:
+            return stock_cache[symbol]
+        
+        # Fetch fresh data if not in cache
+        try:
+            return get_stock_data(symbol)
+        except Exception as e:
+            print(f"Error fetching {symbol}: {e}")
+            return {'error': str(e)}
     
+    def _get_crypto_data(self):
+        """Get cryptocurrency data"""
+        # Check if we need to refresh the cache
+        current_time = time.time()
+        if current_time - last_cache_update > CACHE_DURATION:
+            refresh_cache()
+        
+        # Use MongoDB if available
+        if mongo_client:
+            try:
+                # Get all cryptocurrency records
+                crypto_data = list(current_collection.find())
+                
+                # Convert MongoDB ObjectId to string
+                for item in crypto_data:
+                    if '_id' in item:
+                        item['_id'] = str(item['_id'])
+                
+                return crypto_data
+            except Exception as e:
+                print(f"Error fetching crypto data from MongoDB: {e}")
+        
+        # Fall back to cache
+        return list(crypto_cache.values())
+    
+    def _get_all_prices(self):
+        """Get all stock and crypto prices"""
+        # Check if we need to refresh the cache
+        current_time = time.time()
+        if current_time - last_cache_update > CACHE_DURATION:
+            refresh_cache()
+        
+        # Combine stock and crypto data
+        all_data = []
+        
+        # Use MongoDB if available
+        if mongo_client:
+            try:
+                # Get all records
+                all_data = list(current_collection.find())
+                
+                # Convert MongoDB ObjectId to string
+                for item in all_data:
+                    if '_id' in item:
+                        item['_id'] = str(item['_id'])
+                
+                return all_data
+            except Exception as e:
+                print(f"Error fetching all data from MongoDB: {e}")
+        
+        # Fall back to cache
+        all_data = list(stock_cache.values()) + list(crypto_cache.values())
+        return all_data
+
     def _get_historical_data(self, symbol, days=30):
-        """Get historical data for a symbol from Twelvedata, MongoDB, or YFinance"""
-        # First try Twelvedata if API key is available
-        if twelvedata_enabled and TWELVEDATA_API_KEY:
-            twelve_data = get_twelvedata_historical(symbol, days)
-            if twelve_data and len(twelve_data) > 0:
-                return twelve_data
+        """Get historical data for a specific symbol"""
+        symbol_key = get_symbol_key(symbol)
         
-        # Then try MongoDB
+        # Check MongoDB first
         if mongo_client:
-            # Calculate cutoff date
-            cutoff_date = datetime.now() - timedelta(days=days)
-            
-            historical_data = list(historical_collection.find(
-                {"symbol": symbol, "timestamp": {"$gte": cutoff_date}},
-                {"_id": 0}
-            ).sort("timestamp", -1))
-            
-            if historical_data and len(historical_data) > 10:  # Enough data points
-                return historical_data
+            try:
+                cutoff_date = datetime.now() - timedelta(days=days)
+                # Query historical collection with the normalized symbol key
+                data = list(historical_collection.find(
+                    {"symbol": symbol_key, "timestamp": {"$gte": cutoff_date}}
+                ).sort("timestamp", -1))
+                
+                if data and len(data) > 0:
+                    # Convert MongoDB ObjectId to string
+                    for item in data:
+                        if '_id' in item:
+                            item['_id'] = str(item['_id'])
+                    return data
+            except Exception as e:
+                print(f"Error fetching historical data for {symbol} from MongoDB: {e}")
         
-        # Finally, fall back to YFinance
-        ticker = yf.Ticker(symbol)
-        hist = ticker.history(period=f"{days}d")
-        
-        # Format the data
-        result = []
-        for date, row in hist.iterrows():
-            # Convert pandas timestamp to Python datetime for JSON serialization
-            timestamp = date.to_pydatetime()
+        # If no data in MongoDB or not enough data points, use yfinance
+        try:
+            ticker = yf.Ticker(symbol)
+            history = ticker.history(period=f"{days}d")
             
-            data_point = {
-                "symbol": symbol,
-                "timestamp": timestamp,
-                "price": f"{row['Close']:.2f}",
-                "open": f"{row['Open']:.2f}",
-                "high": f"{row['High']:.2f}",
-                "low": f"{row['Low']:.2f}",
-                "volume": int(row['Volume']),
-                "source": "yfinance"
-            }
-            result.append(data_point)
+            if history.empty:
+                return {"error": f"No historical data found for {symbol}"}
             
-            # Save to MongoDB if available
-            if mongo_client:
-                try:
-                    # Convert datetime objects to strings for MongoDB storage
-                    mongo_data = data_point.copy()
-                    historical_collection.update_one(
-                        {"symbol": symbol, "timestamp": timestamp},
-                        {"$set": mongo_data},
-                        upsert=True
-                    )
-                except Exception as e:
-                    print(f"Error saving historical data for {symbol} to MongoDB: {e}")
-        
-        return result
-    
-    def _refresh_cache(self):
-        """Refresh the cache with latest data"""
-        refresh_cache()
+            # Format the data
+            historical_data = []
+            for date, row in history.iterrows():
+                timestamp = date.to_pydatetime()
+                
+                data_point = {
+                    "symbol": symbol_key,
+                    "full_symbol": symbol,
+                    "timestamp": timestamp,
+                    "price": float(row["Close"]),
+                    "open": float(row["Open"]),
+                    "high": float(row["High"]),
+                    "low": float(row["Low"]),
+                    "volume": int(row["Volume"]) if "Volume" in row else 0
+                }
+                
+                historical_data.append(data_point)
+                
+                # Save to MongoDB if available
+                if mongo_client:
+                    try:
+                        historical_collection.insert_one(data_point)
+                    except Exception as e:
+                        print(f"Error saving historical data for {symbol} to MongoDB: {e}")
+            
+            return historical_data
+        except Exception as e:
+            print(f"Error fetching historical data for {symbol} from yfinance: {e}")
+            return {"error": str(e)}
 
 def run_server():
-    """Run the HTTP server"""
-    try:
-        # Use ThreadingTCPServer for better handling of multiple requests
-        class ThreadedHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-            allow_reuse_address = True
-        
-        # Create and start the server
-        with ThreadedHTTPServer(("", PORT), StockDataHandler) as httpd:
-            print(f"Server running at http://localhost:{PORT}")
+    """Run the HTTP server with port conflict handling"""
+    global PORT
+    
+    for attempt in range(MAX_PORT_ATTEMPTS):
+        try:
+            # Use ThreadingTCPServer for better handling of multiple requests
+            class ThreadedHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+                allow_reuse_address = True
             
-            try:
-                # Start the server
-                httpd.serve_forever()
-            except KeyboardInterrupt:
-                print("\nShutting down server...")
-                if td_manager:
-                    td_manager.stop()
-                httpd.server_close()
-    except Exception as e:
-        print(f"Error starting server: {e}")
-        if td_manager:
-            td_manager.stop()
-        sys.exit(1)
+            # Create and start the server
+            with ThreadedHTTPServer(("", PORT), StockDataHandler) as httpd:
+                print(f"Server running at http://localhost:{PORT}")
+                
+                try:
+                    # Start the server
+                    httpd.serve_forever()
+                except KeyboardInterrupt:
+                    print("\nShutting down server...")
+                    if td_manager:
+                        td_manager.stop()
+                    httpd.server_close()
+                    break
+            return  # Server started successfully
+        except OSError as e:
+            if e.errno == 48:  # Address already in use
+                print(f"Port {PORT} is already in use. Trying port {PORT + 1}...")
+                PORT += 1
+            else:
+                raise
+    
+    print(f"Failed to start server after {MAX_PORT_ATTEMPTS} attempts")
+    if td_manager:
+        td_manager.stop()
+    sys.exit(1)
 
 # Helper function to refresh cache outside of the handler class
 def refresh_cache():
-    """Refresh the cache with latest data and update MongoDB"""
-    global last_cache_update, stock_cache, crypto_cache
+    """Refresh the stock and crypto cache"""
+    global last_cache_update
+    
+    current_time = time.time()
+    if current_time - last_cache_update < CACHE_DURATION:
+        return
     
     print("Refreshing stock and crypto cache...")
     
-    # Clear existing caches
-    stock_cache = {}
-    crypto_cache = {}
-    
-    # Fetch stock data
-    for symbol in STOCK_SYMBOLS:
-        try:
-            data = get_stock_data(symbol)
-            stock_cache[symbol] = data
-            
-            # Save to MongoDB if available
-            if mongo_client:
-                try:
-                    # Update current price
-                    current_collection.update_one(
-                        {"symbol": symbol},
-                        {"$set": data},
-                        upsert=True
-                    )
-                    
-                    # Add to historical collection
-                    historical_data = data.copy()
-                    historical_data['timestamp'] = datetime.now()
-                    historical_collection.insert_one(historical_data)
-                except Exception as e:
-                    print(f"Error saving {symbol} to MongoDB: {e}")
-            
-            print(f"Cached {symbol}: {data['price']}")
-            time.sleep(REQUEST_DELAY)  # Avoid rate limiting
-        except Exception as e:
-            print(f"Error caching {symbol}: {e}")
-    
-    # Fetch crypto data
+    # Update crypto cache with yfinance fallback
     for symbol in CRYPTO_SYMBOLS:
         try:
             data = get_stock_data(symbol)
-            crypto_cache[symbol] = data
             
-            # Save to MongoDB if available
-            if mongo_client:
-                try:
-                    # Update current price
-                    current_collection.update_one(
-                        {"symbol": symbol},
-                        {"$set": data},
-                        upsert=True
-                    )
-                    
-                    # Add to historical collection
-                    historical_data = data.copy()
-                    historical_data['timestamp'] = datetime.now()
-                    historical_collection.insert_one(historical_data)
-                except Exception as e:
-                    print(f"Error saving {symbol} to MongoDB: {e}")
-            
-            print(f"Cached {symbol}: {data['price']}")
-            time.sleep(REQUEST_DELAY)  # Avoid rate limiting
+            if data and 'price' in data:
+                symbol_key = get_symbol_key(symbol)
+                
+                # Update MongoDB if available
+                if mongo_client:
+                    try:
+                        current_collection.update_one(
+                            {"symbol": symbol_key},
+                            {"$set": {
+                                "full_symbol": symbol,
+                                "price": data['price'],
+                                "timestamp": datetime.now(),
+                                "volume": data.get('volume', 0),
+                                "change_percent": data.get('change_percent', 0)
+                            }},
+                            upsert=True
+                        )
+                    except Exception as e:
+                        print(f"Error saving {symbol} to MongoDB: {e}")
+                
+                # Cache in memory as fallback
+                crypto_cache[symbol] = data
+                print(f"Cached {symbol}: {data['price']}")
+            else:
+                print(f"Error: No price data available for {symbol}")
+                
         except Exception as e:
-            print(f"Error caching {symbol}: {e}")
+            print(f"Error updating {symbol}: {e}")
     
-    # Update last cache update time
-    last_cache_update = time.time()
+    # Update cache timestamp
+    last_cache_update = current_time
     print(f"Cache refresh completed at {datetime.now().isoformat()}")
 
-# Function to get stock data outside of the handler class
+# Fix the get_stock_data function to handle symbol format consistently
 def get_stock_data(symbol):
-    """Fetch stock data for a symbol using yfinance"""
-    # Download the ticker data
-    ticker = yf.Ticker(symbol)
-    info = ticker.info
+    """Get stock or crypto data from yfinance API"""
+    try:
+        # Get data from yfinance
+        ticker = yf.Ticker(symbol)
+        history = ticker.history(period="1d")
+        
+        if history.empty:
+            print(f"No data found for {symbol}")
+            return None
+        
+        # Get the latest price (last row)
+        last_row = history.iloc[-1]
+        current_price = round(float(last_row["Close"]), 2)
+        
+        # Calculate change percentage
+        if "Open" in last_row:
+            open_price = float(last_row["Open"])
+            if open_price > 0:
+                change_percent = round(((current_price - open_price) / open_price) * 100, 2)
+            else:
+                change_percent = 0
+        else:
+            change_percent = 0
+        
+        # Get volume if available
+        volume = int(last_row["Volume"]) if "Volume" in last_row else 0
+        
+        data = {
+            "symbol": get_symbol_key(symbol),
+            "full_symbol": symbol,
+            "price": current_price,
+            "volume": volume,
+            "change_percent": change_percent,
+            "timestamp": datetime.now()
+        }
+        
+        return data
     
-    # Get current price and previous close
-    current_price = info.get('regularMarketPrice', 0)
-    prev_close = info.get('previousClose', 0)
-    
-    # Calculate change
-    change = current_price - prev_close
-    change_percent = ((current_price / prev_close) - 1) * 100 if prev_close else 0
-    
-    # Determine if it's a crypto symbol
-    is_crypto = any(crypto in symbol.upper() for crypto in ['BTC', 'ETH', 'XRP', 'DOGE']) or '-USD' in symbol.upper()
-    
-    # Format price based on type (more decimal places for crypto)
-    price_str = f"{current_price:.4f}" if is_crypto and current_price < 1 else f"{current_price:.2f}"
-    change_str = f"{change:.4f}" if is_crypto and abs(change) < 1 else f"{change:.2f}"
-    
-    # Format percent change with sign
-    change_percent_str = f"{'+' if change_percent >= 0 else ''}{change_percent:.2f}%"
-    
-    # Extract just the symbol part (e.g., BTC-USD → BTC)
-    display_symbol = symbol.split('-')[0]
-    
-    return {
-        'symbol': display_symbol,
-        'price': price_str,
-        'change': change_str,
-        'changePercent': change_percent_str,
-        'raw_price': current_price,
-        'raw_change': change,
-        'raw_change_percent': change_percent,
-        'last_updated': datetime.now().isoformat()
-    }
+    except Exception as e:
+        print(f"Error getting data for {symbol}: {e}")
+        return None
 
 def get_twelvedata_historical(symbol, days=30):
     """Fetch historical data using Twelvedata REST API"""
