@@ -99,7 +99,8 @@ ALLOWED_ORIGINS = ['http://localhost:8000', 'http://localhost:3000', 'http://127
 
 # CoinGecko API Configuration
 COINGECKO_API_URL = "https://api.coingecko.com/api/v3"
-CRYPTO_SYMBOLS = [
+# Use CoinGecko IDs here as the /markets endpoint uses IDs
+CRYPTO_IDS = [
     'bitcoin', 'ethereum', 'ripple', 'dogecoin', 'solana', 
     'cardano', 'polkadot', 'matic-network', 'chainlink', 'avalanche-2'
 ]
@@ -117,8 +118,8 @@ CRYPTO_SYMBOL_MAP = {
     'avalanche-2': 'AVAX'
 }
 
-CACHE_DURATION = 60  # 1 minute cache duration
-REQUEST_DELAY = 0.5  # 500ms between requests to avoid rate limiting
+CACHE_DURATION = 300  # Increased cache duration to 5 minutes
+# REQUEST_DELAY = 0.5 # No longer needed with bulk API calls
 
 # MongoDB Configuration
 MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/')
@@ -146,58 +147,6 @@ except Exception as e:
 # Cache for crypto data (fallback if MongoDB connection fails)
 crypto_cache = {}
 last_cache_update = 0
-
-def get_crypto_price_data(crypto_id):
-    """Get current price data for a cryptocurrency from CoinGecko"""
-    try:
-        # CoinGecko API endpoint for getting current price
-        url = f"{COINGECKO_API_URL}/coins/{crypto_id}"
-        
-        # Make the request with market_data and tickers included
-        response = requests.get(url, params={
-            'localization': 'false',
-            'tickers': 'false',
-            'market_data': 'true',
-            'community_data': 'false',
-            'developer_data': 'false'
-        })
-        
-        if response.status_code != 200:
-            print(f"Error fetching data for {crypto_id}: {response.status_code}")
-            return None
-            
-        data = response.json()
-        
-        # Extract relevant data
-        if 'market_data' in data:
-            market_data = data['market_data']
-            price_usd = market_data.get('current_price', {}).get('usd', 0)
-            price_change_24h_percent = market_data.get('price_change_percentage_24h', 0)
-            volume = market_data.get('total_volume', {}).get('usd', 0)
-            market_cap = market_data.get('market_cap', {}).get('usd', 0)
-            
-            # Get display symbol
-            symbol = CRYPTO_SYMBOL_MAP.get(crypto_id, data.get('symbol', '').upper())
-            
-            # Format the data
-            crypto_data = {
-                "symbol": symbol,
-                "coingecko_id": crypto_id,
-                "name": data.get('name', ''),
-                "price": price_usd,
-                "change_percent_24h": price_change_24h_percent,
-                "volume": volume,
-                "market_cap": market_cap,
-                "timestamp": datetime.now()
-            }
-            return crypto_data
-        else:
-            print(f"No market data found for {crypto_id}")
-            return None
-    
-    except Exception as e:
-        print(f"Error getting data for {crypto_id}: {e}")
-        return None
 
 def get_crypto_historical_data(crypto_id, days=30):
     """Get historical price data for a cryptocurrency from CoinGecko"""
@@ -270,49 +219,95 @@ def get_crypto_historical_data(crypto_id, days=30):
         return None
 
 def refresh_cache():
-    """Refresh the crypto cache with data from CoinGecko"""
-    global last_cache_update
+    """Refresh the crypto cache using the bulk /coins/markets endpoint"""
+    global last_cache_update, crypto_cache
     
     current_time = time.time()
     if current_time - last_cache_update < CACHE_DURATION:
         return
     
-    print("Refreshing crypto cache from CoinGecko...")
+    print(f"Refreshing crypto cache from CoinGecko ({datetime.now().isoformat()})...")
     
-    # Update crypto cache
-    for crypto_id in CRYPTO_SYMBOLS:
-        try:
-            data = get_crypto_price_data(crypto_id)
+    try:
+        url = f"{COINGECKO_API_URL}/coins/markets"
+        params = {
+            'vs_currency': 'usd',
+            'ids': ','.join(CRYPTO_IDS),
+            'order': 'market_cap_desc', # Although ids are specified, order doesn't hurt
+            'per_page': len(CRYPTO_IDS),
+            'page': 1,
+            'sparkline': 'false',
+            'price_change_percentage': '24h' # Request 24h price change
+        }
+        
+        response = requests.get(url, params=params, timeout=10) # Added timeout
+        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
             
-            if data:
-                symbol = data['symbol']
-                
-                # Update MongoDB if available
-                if mongo_client:
-                    try:
-                        current_collection.update_one(
-                            {"symbol": symbol},
-                            {"$set": data},
-                            upsert=True
-                        )
-                    except Exception as e:
-                        print(f"Error saving {crypto_id} to MongoDB: {e}")
-                
-                # Cache in memory as fallback
-                crypto_cache[crypto_id] = data
-                print(f"Cached {crypto_id} ({symbol}): ${data['price']}")
-            else:
-                print(f"Error: No price data available for {crypto_id}")
+        data = response.json()
+        new_cache_data = {}
+        
+        if not isinstance(data, list):
+            print(f"Error: Unexpected data format received from CoinGecko: {type(data)}")
+            return
+
+        print(f"Received {len(data)} coin records from CoinGecko.")
+        processed_count = 0
+
+        for coin_data in data:
+            crypto_id = coin_data.get('id')
+            if not crypto_id:
+                print(f"Warning: Skipping record with missing ID: {coin_data.get('symbol')}")
+                continue
+
+            symbol = coin_data.get('symbol', '').upper()
+            price_usd = coin_data.get('current_price')
+            price_change_24h_percent = coin_data.get('price_change_percentage_24h')
+            volume = coin_data.get('total_volume')
+            market_cap = coin_data.get('market_cap')
+            name = coin_data.get('name')
             
-            # Add delay between requests to avoid rate limiting
-            time.sleep(REQUEST_DELAY)
-                
-        except Exception as e:
-            print(f"Error updating {crypto_id}: {e}")
-    
-    # Update cache timestamp
-    last_cache_update = current_time
-    print(f"Cache refresh completed at {datetime.now().isoformat()}")
+            # Handle potential null values
+            if price_usd is None or price_change_24h_percent is None:
+                 print(f"Warning: Skipping {symbol} due to missing price or change data.")
+                 continue
+                 
+            formatted_data = {
+                "symbol": symbol,
+                "coingecko_id": crypto_id,
+                "name": name,
+                "price": float(price_usd),
+                "change_percent_24h": float(price_change_24h_percent),
+                "volume": float(volume) if volume is not None else 0,
+                "market_cap": float(market_cap) if market_cap is not None else 0,
+                "timestamp": datetime.now()
+            }
+            
+            # Update MongoDB if available
+            if mongo_client:
+                try:
+                    current_collection.update_one(
+                        {"symbol": symbol}, # Use symbol as the unique key
+                        {"$set": formatted_data},
+                        upsert=True
+                    )
+                except Exception as e:
+                    print(f"Error saving {symbol} to MongoDB: {e}")
+            
+            # Update the temporary cache using ID as key
+            new_cache_data[crypto_id] = formatted_data
+            processed_count += 1
+
+        # Atomically update the main cache
+        crypto_cache = new_cache_data
+        last_cache_update = current_time
+        print(f"Cache refresh successful. Processed {processed_count} coins at {datetime.fromtimestamp(last_cache_update).isoformat()}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching data from CoinGecko /coins/markets: {e}")
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON response from CoinGecko: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred during cache refresh: {e}")
 
 class StockDataHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -352,7 +347,9 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
     
     def do_GET(self):
         """Handle GET requests"""
-        # Parse the URL path
+        # Refresh cache if needed (moved check here for efficiency)
+        refresh_cache()
+        
         parsed_path = urlparse(self.path)
         path = parsed_path.path
         query = parse_qs(parsed_path.query)
@@ -363,127 +360,131 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
             return
         
         # Get all cryptocurrency prices
-        if path == '/api/crypto':
-            response = self._get_crypto_data()
-            self._json_response(response)
-            return
-        
-        # Get all prices (same as /api/crypto for now)
-        if path == '/api/prices':
+        if path == '/api/crypto' or path == '/api/prices':
             response = self._get_crypto_data()
             self._json_response(response)
             return
             
         # Get specific crypto data
         if path.startswith('/api/crypto/'):
-            crypto_id = path.split('/')[-1]
-            response = self._get_specific_crypto(crypto_id)
+            crypto_id_or_symbol = path.split('/')[-1]
+            response = self._get_specific_crypto(crypto_id_or_symbol)
             self._json_response(response)
             return
             
         # Get historical data
         if path.startswith('/api/historical/'):
-            crypto_id = path.split('/')[-1]
+            crypto_id_or_symbol = path.split('/')[-1]
             days = int(query.get('days', ['30'])[0])
-            response = self._get_historical_data(crypto_id, days)
+            response = self._get_historical_data(crypto_id_or_symbol, days)
             self._json_response(response)
             return
         
         # Default response for unknown endpoints
         self._json_response({'error': 'Not found'}, 404)
     
-    def _get_specific_crypto(self, crypto_id):
-        """Get data for a specific cryptocurrency"""
-        # Support both CoinGecko IDs and symbols
-        if crypto_id.upper() in [symbol.upper() for symbol in CRYPTO_SYMBOL_MAP.values()]:
-            # This is a symbol, find the corresponding CoinGecko ID
-            for cg_id, symbol in CRYPTO_SYMBOL_MAP.items():
-                if symbol.upper() == crypto_id.upper():
-                    crypto_id = cg_id
+    def _get_specific_crypto(self, crypto_id_or_symbol):
+        """Get data for a specific cryptocurrency from cache/DB"""
+        target_symbol = None
+        target_id = None
+
+        # Check if input is a symbol
+        if crypto_id_or_symbol.upper() in CRYPTO_SYMBOL_MAP.values():
+            target_symbol = crypto_id_or_symbol.upper()
+            # Find the corresponding ID
+            for cg_id, sym in CRYPTO_SYMBOL_MAP.items():
+                if sym == target_symbol:
+                    target_id = cg_id
                     break
-        
-        # Check MongoDB first
-        if mongo_client:
+        # Assume it's an ID if not a known symbol
+        elif crypto_id_or_symbol.lower() in CRYPTO_IDS:
+             target_id = crypto_id_or_symbol.lower()
+             target_symbol = CRYPTO_SYMBOL_MAP.get(target_id)
+        else:
+            return {'error': f'Unknown symbol or ID: {crypto_id_or_symbol}'}
+
+        # Check MongoDB first (using symbol as key)
+        if mongo_client and target_symbol:
             try:
-                symbol = CRYPTO_SYMBOL_MAP.get(crypto_id, crypto_id.upper())
-                record = current_collection.find_one({"symbol": symbol})
-                
+                record = current_collection.find_one({"symbol": target_symbol})
                 if record:
-                    # Convert MongoDB ObjectId to string
-                    if '_id' in record:
-                        record['_id'] = str(record['_id'])
+                    if '_id' in record: record['_id'] = str(record['_id']) # Convert ObjectId
+                    print(f"Retrieved {target_symbol} from MongoDB")
                     return record
             except Exception as e:
-                print(f"Error fetching {crypto_id} from MongoDB: {e}")
+                print(f"Error fetching {target_symbol} from MongoDB: {e}")
         
-        # Check cache if not in MongoDB
-        if crypto_id in crypto_cache:
-            return crypto_cache[crypto_id]
+        # Check cache (using ID as key)
+        if target_id and target_id in crypto_cache:
+            print(f"Retrieved {target_symbol} ({target_id}) from cache")
+            return crypto_cache[target_id]
         
-        # If not in cache, fetch fresh data
-        try:
-            return get_crypto_price_data(crypto_id)
-        except Exception as e:
-            print(f"Error fetching {crypto_id}: {e}")
-            return {'error': str(e)}
+        # Data not found
+        print(f"Data for {target_symbol} ({target_id}) not found in cache or DB.")
+        return {'error': f'Data for {crypto_id_or_symbol} currently unavailable'}
     
     def _get_crypto_data(self):
-        """Get all cryptocurrency data"""
-        # Check if we need to refresh the cache
-        current_time = time.time()
-        if current_time - last_cache_update > CACHE_DURATION:
-            refresh_cache()
-        
+        """Get all cryptocurrency data from cache/DB"""
         # Use MongoDB if available
         if mongo_client:
             try:
-                # Get all cryptocurrency records
                 crypto_data = list(current_collection.find())
-                
-                # Convert MongoDB ObjectId to string
-                for item in crypto_data:
-                    if '_id' in item:
-                        item['_id'] = str(item['_id'])
-                
-                return crypto_data
+                if crypto_data: # Ensure we have data before returning
+                    for item in crypto_data: # Convert ObjectId
+                        if '_id' in item: item['_id'] = str(item['_id'])
+                    print(f"Retrieved {len(crypto_data)} records from MongoDB")
+                    return crypto_data
+                else:
+                    print("MongoDB collection is empty, falling back to cache.")
             except Exception as e:
-                print(f"Error fetching crypto data from MongoDB: {e}")
+                print(f"Error fetching all crypto data from MongoDB: {e}")
         
-        # Fall back to cache
+        # Fall back to in-memory cache
+        print(f"Retrieved {len(crypto_cache)} records from in-memory cache.")
         return list(crypto_cache.values())
     
-    def _get_historical_data(self, crypto_id, days=30):
-        """Get historical data for a specific cryptocurrency"""
-        # Support both CoinGecko IDs and symbols
-        if crypto_id.upper() in [symbol.upper() for symbol in CRYPTO_SYMBOL_MAP.values()]:
-            # This is a symbol, find the corresponding CoinGecko ID
-            for cg_id, symbol in CRYPTO_SYMBOL_MAP.items():
-                if symbol.upper() == crypto_id.upper():
-                    crypto_id = cg_id
-                    break
-        
-        symbol = CRYPTO_SYMBOL_MAP.get(crypto_id, crypto_id.upper())
-        
-        # Check MongoDB first
-        if mongo_client:
-            try:
-                cutoff_date = datetime.now() - timedelta(days=days)
-                # Query historical collection with the symbol
-                data = list(historical_collection.find(
-                    {"symbol": symbol, "timestamp": {"$gte": cutoff_date}}
-                ).sort("timestamp", -1))
+    def _get_historical_data(self, crypto_id_or_symbol, days=30):
+         """Get historical data for a specific cryptocurrency"""
+         target_symbol = None
+         target_id = None
+
+         # Determine ID and Symbol from input
+         if crypto_id_or_symbol.upper() in CRYPTO_SYMBOL_MAP.values():
+             target_symbol = crypto_id_or_symbol.upper()
+             for cg_id, sym in CRYPTO_SYMBOL_MAP.items():
+                 if sym == target_symbol:
+                     target_id = cg_id
+                     break
+         elif crypto_id_or_symbol.lower() in CRYPTO_IDS:
+             target_id = crypto_id_or_symbol.lower()
+             target_symbol = CRYPTO_SYMBOL_MAP.get(target_id)
+         else:
+             return {'error': f'Unknown symbol or ID for historical data: {crypto_id_or_symbol}'}
+
+         if not target_id or not target_symbol:
+             return {'error': f'Could not resolve ID/Symbol: {crypto_id_or_symbol}'}
+
+         # Check MongoDB first
+         if mongo_client:
+             try:
+                 cutoff_date = datetime.now() - timedelta(days=days)
+                 data = list(historical_collection.find(
+                     {"symbol": target_symbol, "timestamp": {"$gte": cutoff_date}}
+                 ).sort("timestamp", -1))
                 
-                if data and len(data) > 0:
-                    # Convert MongoDB ObjectId to string
-                    for item in data:
-                        if '_id' in item:
-                            item['_id'] = str(item['_id'])
-                    return data
-            except Exception as e:
-                print(f"Error fetching historical data for {crypto_id} from MongoDB: {e}")
+                 if data and len(data) >= days * 0.8: # Check if we have reasonable amount of data
+                     print(f"Retrieved {len(data)} historical records for {target_symbol} from MongoDB")
+                     for item in data: # Convert ObjectId
+                         if '_id' in item: item['_id'] = str(item['_id'])
+                     return data
+                 else:
+                     print(f"Found {len(data)} historical records for {target_symbol} in MongoDB, fetching fresh from CoinGecko.")
+             except Exception as e:
+                 print(f"Error fetching historical data for {target_symbol} from MongoDB: {e}")
         
-        # If no data in MongoDB or not enough data points, use CoinGecko
-        return get_crypto_historical_data(crypto_id, days)
+         # If no/insufficient data in MongoDB, fetch from CoinGecko directly
+         print(f"Fetching fresh historical data for {target_symbol} ({target_id}) from CoinGecko.")
+         return get_crypto_historical_data(target_id, days)
 
 def run_server():
     """Run the HTTP server with port conflict handling"""
@@ -518,8 +519,7 @@ def run_server():
     sys.exit(1)
 
 if __name__ == "__main__":
-    # Initial cache refresh
+    # Initial cache population before starting server
     refresh_cache()
-    
-    # Start the server
+    # Run the server
     run_server() 
