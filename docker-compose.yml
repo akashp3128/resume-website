@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:6.0
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=example
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  crypto-data-server:
+    build: .
+    restart: always
+    ports:
+      - "3003:3003"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      - PORT=3003
+      - MONGO_HOST=mongo
+      - MONGO_URI=mongodb://root:example@mongo:27017/
+      - CACHE_DURATION=600 # 10 minutes to reduce API calls
+      - RETRY_ATTEMPTS=5
+      - RETRY_DELAY=30
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - ./:/app
+
+volumes:
+  mongo-data: 
