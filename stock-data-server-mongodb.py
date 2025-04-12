@@ -190,87 +190,95 @@ class TwelvedataManager:
         self.last_prices = {}
         self.error_count = 0
         self.max_retries = 3
+        self.connect()
     
     def on_event(self, event):
         """Handle websocket events from Twelvedata"""
         try:
-            if 'price' in event and 'symbol' in event:
+            if isinstance(event, dict) and 'price' in event and 'symbol' in event:
                 symbol = event['symbol']
                 price = float(event['price'])
                 timestamp = datetime.now()
                 
-                # Store price with timestamp
-                self.last_prices[symbol] = {
-                    'price': price,
-                    'timestamp': timestamp,
-                    'volume': event.get('volume', 0),
-                    'change_percent': event.get('percent_change', 0)
-                }
-                
-                # Store in MongoDB if available
+                # Update MongoDB if available
                 if mongo_client:
                     try:
                         current_collection.update_one(
-                            {'symbol': symbol},
+                            {"symbol": symbol},
                             {
-                                '$set': {
-                                    'price': price,
-                                    'timestamp': timestamp,
-                                    'volume': event.get('volume', 0),
-                                    'change_percent': event.get('percent_change', 0)
+                                "$set": {
+                                    "price": price,
+                                    "timestamp": timestamp
                                 }
                             },
                             upsert=True
                         )
+                        
+                        historical_collection.insert_one({
+                            "symbol": symbol,
+                            "price": price,
+                            "timestamp": timestamp
+                        })
                     except Exception as e:
                         print(f"MongoDB update error for {symbol}: {e}")
                 
-                # Reset error count on successful update
-                self.error_count = 0
+                # Update cache as fallback
+                self.last_prices[symbol] = {
+                    "price": price,
+                    "timestamp": timestamp
+                }
                 
         except Exception as e:
-            print(f"Error processing Twelvedata event: {e}")
-            self.error_count += 1
-            
-            # Reconnect if too many errors
-            if self.error_count >= self.max_retries:
-                print("Too many errors, attempting reconnection...")
-                self.connect()
+            print(f"Error processing websocket event: {e}")
+            print(f"Event data: {event}")
     
     def connect(self):
-        """Connect to Twelvedata websocket"""
+        """Establish websocket connection with error handling and reconnection"""
         try:
-            # Reset error count
-            self.error_count = 0
+            if self.ws:
+                self.ws.stop()
             
-            # Initialize websocket with all crypto symbols
+            # Initialize websocket
             self.ws = self.client.websocket(symbols=self.symbols)
             
             # Set callbacks
             self.ws.subscribe(self.on_event)
             
-            # Start the websocket connection
+            # Start the connection
             self.ws.connect()
             self.connected = True
+            print("Successfully connected to Twelvedata websocket")
             
-            print(f"Connected to Twelvedata websocket for symbols: {self.symbols}")
         except Exception as e:
             print(f"Error connecting to Twelvedata websocket: {e}")
-            self.connected = False
+            self.error_count += 1
             
-            # Retry connection after delay
-            time.sleep(5)
             if self.error_count < self.max_retries:
-                self.error_count += 1
+                print(f"Retrying connection... Attempt {self.error_count}/{self.max_retries}")
+                time.sleep(5)  # Wait 5 seconds before retrying
                 self.connect()
+            else:
+                print("Max retries reached. Falling back to polling method.")
+                self.connected = False
+    
+    def stop(self):
+        """Stop the websocket connection"""
+        if self.ws:
+            self.ws.stop()
+            self.connected = False
 
 # Initialize Twelvedata if API key is available
-if twelvedata_enabled:
-    print("Twelvedata API integration enabled")
-    all_symbols = STOCK_SYMBOLS + CRYPTO_SYMBOLS
-    td_manager = TwelvedataManager(TWELVEDATA_API_KEY, all_symbols)
+if TWELVEDATA_API_KEY and 'TDClient' in globals():
+    try:
+        print("Initializing Twelvedata connection...")
+        td_manager = TwelvedataManager(TWELVEDATA_API_KEY, CRYPTO_SYMBOLS)
+        print("Twelvedata initialization complete")
+    except Exception as e:
+        print(f"Failed to initialize Twelvedata: {e}")
+        print("Falling back to polling method")
+        td_manager = None
 else:
-    print("Twelvedata API integration disabled (no API key or package not installed)")
+    print("Twelvedata API key not found or package not available")
     td_manager = None
 
 print(f"Starting yfinance stock data server on port {PORT}")
@@ -548,34 +556,29 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
         refresh_cache()
 
 def run_server():
-    # Use ThreadingTCPServer for better handling of multiple requests
-    class ThreadedHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-        allow_reuse_address = True
-    
-    # Initial cache refresh
+    """Run the HTTP server"""
     try:
-        refresh_cache()
-    except Exception as e:
-        print(f"Error during initial cache refresh: {e}")
-    
-    # Start Twelvedata websocket if enabled
-    if twelvedata_enabled and td_manager:
-        connected = td_manager.connect()
-        if connected:
-            td_manager.keep_alive()
-            print("Twelvedata websocket connection started in background")
-        else:
-            print("Failed to connect to Twelvedata websocket, falling back to yfinance")
-    
-    # Start the HTTP server
-    try:
+        # Use ThreadingTCPServer for better handling of multiple requests
+        class ThreadedHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+            allow_reuse_address = True
+        
+        # Create and start the server
         with ThreadedHTTPServer(("", PORT), StockDataHandler) as httpd:
             print(f"Server running at http://localhost:{PORT}")
-            httpd.serve_forever()
-    except KeyboardInterrupt:
-        print("Server stopped by user")
+            
+            try:
+                # Start the server
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                print("\nShutting down server...")
+                if td_manager:
+                    td_manager.stop()
+                httpd.server_close()
     except Exception as e:
-        print(f"Server error: {e}")
+        print(f"Error starting server: {e}")
+        if td_manager:
+            td_manager.stop()
+        sys.exit(1)
 
 # Helper function to refresh cache outside of the handler class
 def refresh_cache():
@@ -765,14 +768,8 @@ def get_twelvedata_historical(symbol, days=30):
         return None
 
 if __name__ == "__main__":
-    try:
-        run_server()
-    except KeyboardInterrupt:
-        print("Server stopped")
-        
-        # Close MongoDB connection
-        if mongo_client:
-            mongo_client.close()
-            print("MongoDB connection closed")
-        
-        sys.exit(0) 
+    # Initial cache refresh
+    refresh_cache()
+    
+    # Start the server
+    run_server() 
