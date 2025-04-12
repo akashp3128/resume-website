@@ -400,6 +400,56 @@
       cursor: pointer;
     }
     
+    /* Navy Images Styles */
+    .navy-images {
+      display: flex;
+      justify-content: space-between;
+      gap: 15px;
+      margin-top: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .navy-image-container {
+      flex: 1;
+      max-width: 32%;
+      text-align: center;
+    }
+    
+    .navy-image {
+      width: 100%;
+      height: auto;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease;
+      cursor: pointer;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+    }
+    
+    .navy-image:hover {
+      transform: scale(1.02);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    
+    .navy-image-caption {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      color: #666;
+      font-style: italic;
+    }
+    
+    @media (max-width: 768px) {
+      .navy-images {
+        flex-direction: column;
+      }
+      
+      .navy-image-container {
+        max-width: 100%;
+        margin-bottom: 15px;
+      }
+    }
+    /* End Navy Images Styles */
+    
     @media (max-width: 768px) {
       .container {
         padding: 1rem;
@@ -1216,68 +1266,18 @@
             <h3>Navy Service Images</h3>
             <div class="navy-images">
               <div class="navy-image-container">
-                <iframe src="images/navy/image1.html" class="navy-image" scrolling="no" frameborder="0"></iframe>
+                <iframe src="public/images/navy/image1.html" class="navy-image" scrolling="no" frameborder="0"></iframe>
                 <p class="navy-image-caption">USS Frank Cable Operations</p>
               </div>
               <div class="navy-image-container">
-                <iframe src="images/navy/image2.html" class="navy-image" scrolling="no" frameborder="0"></iframe>
+                <iframe src="public/images/navy/image2.html" class="navy-image" scrolling="no" frameborder="0"></iframe>
                 <p class="navy-image-caption">NDT Inspection Training</p>
               </div>
               <div class="navy-image-container">
-                <iframe src="images/navy/image3.html" class="navy-image" scrolling="no" frameborder="0"></iframe>
+                <iframe src="public/images/navy/image3.html" class="navy-image" scrolling="no" frameborder="0"></iframe>
                 <p class="navy-image-caption">Puget Sound Naval Shipyard</p>
               </div>
             </div>
-            
-            <style>
-              .navy-images {
-                display: flex;
-                justify-content: space-between;
-                gap: 15px;
-                margin-top: 20px;
-                margin-bottom: 20px;
-              }
-              
-              .navy-image-container {
-                flex: 1;
-                max-width: 32%;
-                text-align: center;
-              }
-              
-              .navy-image {
-                width: 100%;
-                height: auto;
-                border-radius: 4px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                transition: transform 0.3s ease;
-                cursor: pointer;
-                aspect-ratio: 4/3;
-                object-fit: cover;
-              }
-              
-              .navy-image:hover {
-                transform: scale(1.02);
-                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-              }
-              
-              .navy-image-caption {
-                margin-top: 8px;
-                font-size: 0.9rem;
-                color: #666;
-                font-style: italic;
-              }
-              
-              @media (max-width: 768px) {
-                .navy-images {
-                  flex-direction: column;
-                }
-                
-                .navy-image-container {
-                  max-width: 100%;
-                  margin-bottom: 15px;
-                }
-              }
-            </style>
           </div>
         </section>
         
