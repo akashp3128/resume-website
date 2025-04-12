@@ -19,7 +19,8 @@ mimetypes.add_type('image/png', '.png')
 
 # Configuration
 PORT = 8001
-UPLOAD_DIR = '../uploads'  # Store uploads in the root directory
+UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploads'))  # Absolute path
+SITE_URL = 'https://akashpatelresume.us'  # Base URL for file access
 ALLOWED_ORIGINS = ['http://localhost:8000', 'http://localhost:3000', 'http://127.0.0.1:8000', 'https://akashpatelresume.us', '*']
 MAX_SIZES = {
     'resume': 10 * 1024 * 1024,  # 10MB for resumes
@@ -33,7 +34,8 @@ ALLOWED_FILE_TYPES = {
 }
 
 print(f"Starting upload server on port {PORT}")
-print(f"Upload directory: {os.path.abspath(UPLOAD_DIR)}")
+print(f"Upload directory: {UPLOAD_DIR}")
+print(f"Site URL: {SITE_URL}")
 
 # Create upload directory if it doesn't exist
 try:
@@ -216,221 +218,145 @@ class UploadHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b'')
     
     def do_POST(self):
-        print("Handling POST request")
-        content_length = int(self.headers.get('Content-Length', 0))
-        print(f"Content length: {content_length}")
-        
-        # Check origin for CORS
-        origin = self.headers.get('Origin', '')
-        print(f"Request origin: {origin}")
-        
-        # Print all headers for debugging
-        print("Headers:")
-        for header, value in self.headers.items():
-            print(f"  {header}: {value}")
-        
-        # Check content type for multipart/form-data
-        content_type = self.headers.get('Content-Type', '')
-        print(f"Content type: {content_type}")
-        
-        if not content_type.startswith('multipart/form-data'):
-            print("Invalid content type")
-            self._json_response({'error': 'Invalid content type. Expected multipart/form-data'}, 400)
-            return
-        
+        """Handle file uploads"""
         try:
+            # Parse content type and length
+            content_type = self.headers.get('Content-Type', '')
+            content_length = int(self.headers.get('Content-Length', 0))
+            
             # Parse multipart form data
-            print("Parsing form data")
             parser = MultipartFormParser(content_type, self.rfile, content_length)
-            form = parser.parse()
+            form_data = parser.parse()
             
-            print(f"Form fields: {[key for key in form.keys() if not key.startswith('_')]}")
-            
-            # Get file and type
-            if 'file' not in form or 'type' not in form:
-                print("Missing file or type in form data")
-                parser.cleanup_temp_files(form)
-                self._json_response({'error': 'Missing file or type'}, 400)
-                return
-            
-            file_item = form['file']
-            file_type = form['type']
-            
-            print(f"Received file: {file_item['filename']} of type {file_type}")
-            print(f"File content type detected as: {file_item['type']}")
-            
-            # Validate file type
-            if file_type not in ['resume', 'eval', 'photo']:
-                print(f"Invalid file type: {file_type}")
-                parser.cleanup_temp_files(form)
-                self._json_response({'error': 'Invalid file type'}, 400)
-                return
-            
-            # Validate file size
-            file_size = file_item['size']
-            print(f"File size: {file_size} bytes")
-            
-            if file_size > MAX_SIZES[file_type]:
-                print(f"File exceeds maximum size of {MAX_SIZES[file_type]} bytes")
-                parser.cleanup_temp_files(form)
-                self._json_response({
-                    'error': f'File exceeds maximum size ({MAX_SIZES[file_type] // (1024 * 1024)}MB)'
-                }, 400)
-                return
-            
-            # Validate content type
-            print(f"File content type: {file_item['type']}")
-            
-            # Special handling for image files due to inconsistent MIME types
-            is_valid_type = False
-            if file_type == 'eval' or file_type == 'photo':
-                # For images, check file extension as well
-                file_ext = os.path.splitext(file_item['filename'].lower())[1]
-                content_type = file_item['type'].lower()
-                
-                # More permissive check for JPEG files which can have inconsistent MIME types
-                if file_ext in ['.jpg', '.jpeg'] or content_type in ['image/jpeg', 'image/jpg'] or \
-                   file_ext == '.png' or content_type == 'image/png' or \
-                   (file_type == 'eval' and file_ext == '.pdf') or \
-                   content_type in ALLOWED_FILE_TYPES[file_type]:
-                    is_valid_type = True
-                    # Normalize JPEG MIME type for consistent handling
-                    if file_ext in ['.jpg', '.jpeg'] or content_type in ['image/jpeg', 'image/jpg']:
-                        file_item['type'] = 'image/jpeg'
-            else:
-                # For PDFs, rely on the detected content type
-                if file_item['type'] in ALLOWED_FILE_TYPES[file_type]:
-                    is_valid_type = True
-            
-            if not is_valid_type:
-                print(f"Invalid content type. Expected one of: {ALLOWED_FILE_TYPES[file_type]}")
-                parser.cleanup_temp_files(form)
-                self._json_response({
-                    'error': f'Invalid file type. Allowed types: {", ".join(ALLOWED_FILE_TYPES[file_type])}'
-                }, 400)
-                return
-            
-            # Generate a unique filename with timestamp
-            timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-            filename = f"{timestamp}-{file_item['filename']}"
-            filepath = os.path.join(UPLOAD_DIR, file_type, filename)
-            
-            print(f"Saving file to: {filepath}")
-            
-            # Save the file
             try:
-                with open(filepath, 'wb') as dest_file:
-                    with open(file_item['tempfile'], 'rb') as src_file:
-                        dest_file.write(src_file.read())
-                print(f"File saved successfully")
-            except Exception as e:
-                print(f"Error saving file: {e}", file=sys.stderr)
-                parser.cleanup_temp_files(form)
-                self._json_response({'error': f'Error saving file: {str(e)}'}, 500)
-                return
-            
-            # Generate a URL for the uploaded file
-            # Determine the appropriate base URL
-            host = self.headers.get('Host', f'localhost:{PORT}')
-            
-            # Create a reliable URL that will work from both the browser and local server
-            if 'localhost' in host or '127.0.0.1' in host:
-                base_url = f"http://{host}"
-            else:
-                # For production, use the origin if available
-                origin = self.headers.get('Origin', '')
-                if origin:
-                    base_url = origin
-                else:
-                    base_url = f"http://{host}"
-            
-            # Remove trailing slash if present
-            if base_url.endswith('/'):
-                base_url = base_url[:-1]
-            
-            file_url = f"{base_url}/uploads/{file_type}/{filename}"
-            
-            print(f"File URL: {file_url}")
-            
-            # Clean up temporary files
-            parser.cleanup_temp_files(form)
-            
-            # Return success response
-            self._json_response({
-                'success': True,
-                'message': 'File uploaded successfully',
-                'filename': filename,
-                'url': file_url
-            })
-            
+                # Get upload type (resume, eval, photo)
+                upload_type = form_data.get('type', 'photo')
+                
+                # Get file data
+                file_data = form_data.get('file')
+                if not file_data or not isinstance(file_data, dict):
+                    return self._json_response({'error': 'No file uploaded'}, 400)
+                
+                # Validate file type
+                if file_data['type'] not in ALLOWED_FILE_TYPES[upload_type]:
+                    return self._json_response({
+                        'error': f'Invalid file type. Allowed types for {upload_type}: {ALLOWED_FILE_TYPES[upload_type]}'
+                    }, 400)
+                
+                # Validate file size
+                if file_data['size'] > MAX_SIZES[upload_type]:
+                    return self._json_response({
+                        'error': f'File too large. Maximum size for {upload_type}: {MAX_SIZES[upload_type] // (1024*1024)}MB'
+                    }, 400)
+                
+                # Generate safe filename with timestamp
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                original_name = os.path.splitext(file_data['filename'])[0]
+                ext = os.path.splitext(file_data['filename'])[1].lower()
+                safe_filename = f"{upload_type}_{timestamp}_{original_name}{ext}"
+                safe_filename = ''.join(c for c in safe_filename if c.isalnum() or c in '._-')
+                
+                # Create upload path
+                upload_path = os.path.join(UPLOAD_DIR, upload_type, safe_filename)
+                
+                # Move file from temp location
+                os.rename(file_data['tempfile'], upload_path)
+                
+                # Generate public URL
+                file_url = f"{SITE_URL}/uploads/{upload_type}/{safe_filename}"
+                
+                # Special handling for resume uploads
+                if upload_type == 'resume':
+                    # Create a symlink with a fixed name for the latest resume
+                    latest_resume = os.path.join(UPLOAD_DIR, 'resume', 'latest_resume.pdf')
+                    try:
+                        if os.path.exists(latest_resume):
+                            os.unlink(latest_resume)
+                        os.symlink(upload_path, latest_resume)
+                        print(f"Created symlink to latest resume: {latest_resume}")
+                    except Exception as e:
+                        print(f"Error creating resume symlink: {e}")
+                
+                # Return success with file URL
+                return self._json_response({
+                    'success': True,
+                    'message': 'File uploaded successfully',
+                    'file': {
+                        'name': safe_filename,
+                        'type': file_data['type'],
+                        'size': file_data['size'],
+                        'url': file_url
+                    }
+                })
+                
+            finally:
+                # Clean up temporary files
+                MultipartFormParser.cleanup_temp_files(form_data)
+                
         except Exception as e:
-            print(f"Error handling upload: {e}", file=sys.stderr)
-            import traceback
-            traceback.print_exc()
-            self._json_response({'error': f'Upload failed: {str(e)}'}, 500)
+            print(f"Upload error: {e}")
+            return self._json_response({'error': str(e)}, 500)
     
     def do_GET(self):
-        print(f"Handling GET request for: {self.path}")
-        
-        # Serve uploaded files
-        if self.path.startswith('/uploads/'):
-            try:
-                # Adjust path to match our directory structure
-                relative_path = self.path[1:]  # Remove leading slash
-                filepath = os.path.join('..', relative_path)  # Go up one level since we're in upload-handler
-                
-                print(f"Attempting to serve file: {filepath}")
-                
-                # Check if file exists
-                if not os.path.isfile(filepath):
-                    print(f"File not found: {filepath}")
-                    self.send_error(404, 'File not found')
+        """Handle file downloads and latest resume requests"""
+        try:
+            # Parse the URL
+            parsed_url = urlparse(self.path)
+            path = parsed_url.path
+            
+            # Special handling for latest resume
+            if path == '/uploads/resume/latest' or path == '/uploads/resume/latest_resume.pdf':
+                latest_resume = os.path.join(UPLOAD_DIR, 'resume', 'latest_resume.pdf')
+                if not os.path.exists(latest_resume):
+                    return self._json_response({'error': 'No resume found'}, 404)
+                    
+                # Serve the latest resume
+                try:
+                    with open(latest_resume, 'rb') as f:
+                        self._set_headers(content_type='application/pdf')
+                        self.end_headers()
+                        self.wfile.write(f.read())
                     return
+                except Exception as e:
+                    print(f"Error serving latest resume: {e}")
+                    return self._json_response({'error': 'Error reading resume'}, 500)
+            
+            # Normal file serving
+            if path.startswith('/uploads/'):
+                # Remove /uploads/ prefix
+                relative_path = path[8:]
+                file_path = os.path.join(UPLOAD_DIR, relative_path)
                 
-                # Determine content type using the helper function
-                content_type = detect_file_type(filepath)
-                print(f"Serving file with content type: {content_type}")
+                # Validate the path is within UPLOAD_DIR
+                real_path = os.path.realpath(file_path)
+                if not real_path.startswith(os.path.realpath(UPLOAD_DIR)):
+                    return self._json_response({'error': 'Invalid file path'}, 403)
                 
-                # Add CORS headers for file serving
-                self.send_response(200)
-                self.send_header('Content-Type', content_type)
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Cache-Control', 'public, max-age=86400')  # Cache for one day
+                if not os.path.exists(file_path):
+                    return self._json_response({'error': 'File not found'}, 404)
                 
-                # Get the file size for Content-Length header
-                file_size = os.path.getsize(filepath)
-                self.send_header('Content-Length', str(file_size))
-                
-                self.end_headers()
-                
-                # Send the file in chunks to avoid memory issues with large files
-                with open(filepath, 'rb') as f:
-                    chunk_size = 8192  # 8KB chunks
-                    while True:
-                        chunk = f.read(chunk_size)
-                        if not chunk:
-                            break
-                        self.wfile.write(chunk)
-                
-                print("File served successfully")
-                
-            except Exception as e:
-                print(f"Error serving file: {e}", file=sys.stderr)
-                import traceback
-                traceback.print_exc()
-                self.send_error(500, 'Internal server error')
-        else:
-            # Add simple health check endpoint
-            if self.path == '/health' or self.path == '/':
-                self._json_response({
-                    'status': 'up',
-                    'message': 'Upload server is running',
-                    'timestamp': datetime.now().isoformat()
-                })
-                return
-                
-            print(f"Path not found: {self.path}")
-            self.send_error(404, 'Not found')
+                try:
+                    # Determine content type
+                    content_type, _ = mimetypes.guess_type(file_path)
+                    if not content_type:
+                        content_type = 'application/octet-stream'
+                    
+                    # Serve the file
+                    with open(file_path, 'rb') as f:
+                        self._set_headers(content_type=content_type)
+                        self.end_headers()
+                        self.wfile.write(f.read())
+                    return
+                except Exception as e:
+                    print(f"Error serving file {file_path}: {e}")
+                    return self._json_response({'error': 'Error reading file'}, 500)
+            
+            # Handle other paths
+            return self._json_response({'error': 'Not found'}, 404)
+            
+        except Exception as e:
+            print(f"Error handling GET request: {e}")
+            return self._json_response({'error': str(e)}, 500)
 
 def run_server():
     # Use ThreadingTCPServer for better handling of multiple requests

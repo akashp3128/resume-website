@@ -132,14 +132,17 @@ except ImportError:
 # Configuration
 PORT = 3000
 ALLOWED_ORIGINS = ['http://localhost:8000', 'http://localhost:3000', 'http://127.0.0.1:8000', 'https://akashpatelresume.us', '*']
-STOCK_SYMBOLS = ['SPY', 'AAPL', 'MSFT', 'NVDA', 'META', 'TSLA', 'GOOGL', 'PLTR', 'GME']
-CRYPTO_SYMBOLS = ['BTC-USD', 'ETH-USD', 'XRP-USD', 'DOGE-USD']
-CACHE_DURATION = 300  # 5 minutes in seconds
+STOCK_SYMBOLS = []  # Removed stock symbols
+CRYPTO_SYMBOLS = [
+    'BTC-USD', 'ETH-USD', 'XRP-USD', 'DOGE-USD', 'SOL-USD', 
+    'ADA-USD', 'DOT-USD', 'MATIC-USD', 'LINK-USD', 'AVAX-USD'
+]
+CACHE_DURATION = 60  # Reduced to 1 minute for more frequent crypto updates
 REQUEST_DELAY = 0.2  # 200ms between requests to avoid rate limiting
 
 # MongoDB Configuration
 MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/')
-DB_NAME = 'stock_ticker'
+DB_NAME = 'crypto_ticker'  # Updated database name
 HISTORICAL_COLLECTION = 'historical_prices'
 CURRENT_COLLECTION = 'current_prices'
 
@@ -176,7 +179,7 @@ td_client = None
 ws_connection = None
 
 class TwelvedataManager:
-    """Manages the Twelvedata websocket connection and data"""
+    """Manages the Twelvedata websocket connection and crypto data"""
     
     def __init__(self, api_key, symbols):
         self.api_key = api_key
@@ -185,112 +188,81 @@ class TwelvedataManager:
         self.ws = None
         self.connected = False
         self.last_prices = {}
+        self.error_count = 0
+        self.max_retries = 3
     
     def on_event(self, event):
         """Handle websocket events from Twelvedata"""
         try:
-            # Print the event for debugging
-            print(f"Twelvedata event: {event}")
-            
-            # Process the price update
             if 'price' in event and 'symbol' in event:
                 symbol = event['symbol']
                 price = float(event['price'])
+                timestamp = datetime.now()
                 
-                # Store the price in our last_prices dictionary
+                # Store price with timestamp
                 self.last_prices[symbol] = {
                     'price': price,
-                    'timestamp': datetime.now()
+                    'timestamp': timestamp,
+                    'volume': event.get('volume', 0),
+                    'change_percent': event.get('percent_change', 0)
                 }
                 
-                # Update MongoDB if available
+                # Store in MongoDB if available
                 if mongo_client:
-                    # Get previous price from MongoDB for change calculation
-                    prev_data = current_collection.find_one({"symbol": symbol})
-                    prev_price = prev_data.get('raw_price', price) if prev_data else price
-                    
-                    # Calculate change
-                    change = price - prev_price
-                    change_percent = ((price / prev_price) - 1) * 100 if prev_price else 0
-                    
-                    # Determine if it's a crypto symbol
-                    is_crypto = any(crypto in symbol.upper() for crypto in ['BTC', 'ETH', 'XRP', 'DOGE']) or '-USD' in symbol.upper()
-                    
-                    # Format price based on type (more decimal places for crypto)
-                    price_str = f"{price:.4f}" if is_crypto and price < 1 else f"{price:.2f}"
-                    change_str = f"{change:.4f}" if is_crypto and abs(change) < 1 else f"{change:.2f}"
-                    
-                    # Format percent change with sign
-                    change_percent_str = f"{'+' if change_percent >= 0 else ''}{change_percent:.2f}%"
-                    
-                    # Extract just the symbol part (e.g., BTC-USD → BTC)
-                    display_symbol = symbol.split('-')[0]
-                    
-                    # Update MongoDB with real-time data
-                    current_collection.update_one(
-                        {"symbol": symbol},
-                        {"$set": {
-                            "symbol": display_symbol,
-                            "price": price_str,
-                            "change": change_str,
-                            "changePercent": change_percent_str,
-                            "raw_price": price,
-                            "raw_change": change,
-                            "raw_change_percent": change_percent,
-                            "last_updated": datetime.now(),
-                            "source": "twelvedata_websocket"
-                        }},
-                        upsert=True
-                    )
-                    
-                    # Add historical data point
-                    historical_collection.insert_one({
-                        "symbol": symbol,
-                        "price": price,
-                        "timestamp": datetime.now(),
-                        "source": "twelvedata_websocket"
-                    })
-                    
-                    print(f"Updated MongoDB with real-time price for {symbol}: {price_str}")
+                    try:
+                        current_collection.update_one(
+                            {'symbol': symbol},
+                            {
+                                '$set': {
+                                    'price': price,
+                                    'timestamp': timestamp,
+                                    'volume': event.get('volume', 0),
+                                    'change_percent': event.get('percent_change', 0)
+                                }
+                            },
+                            upsert=True
+                        )
+                    except Exception as e:
+                        print(f"MongoDB update error for {symbol}: {e}")
+                
+                # Reset error count on successful update
+                self.error_count = 0
+                
         except Exception as e:
             print(f"Error processing Twelvedata event: {e}")
+            self.error_count += 1
+            
+            # Reconnect if too many errors
+            if self.error_count >= self.max_retries:
+                print("Too many errors, attempting reconnection...")
+                self.connect()
     
     def connect(self):
-        """Initialize and connect the websocket client"""
-        if not self.api_key:
-            print("Twelvedata API key is not set, websocket connection disabled")
-            return False
-            
+        """Connect to Twelvedata websocket"""
         try:
-            print(f"Initializing Twelvedata websocket connection for symbols: {self.symbols}")
-            self.ws = self.client.websocket(symbols=self.symbols, on_event=self.on_event)
+            # Reset error count
+            self.error_count = 0
+            
+            # Initialize websocket with all crypto symbols
+            self.ws = self.client.websocket(symbols=self.symbols)
+            
+            # Set callbacks
+            self.ws.subscribe(self.on_event)
+            
+            # Start the websocket connection
             self.ws.connect()
             self.connected = True
-            print("Twelvedata websocket connected successfully")
-            return True
+            
+            print(f"Connected to Twelvedata websocket for symbols: {self.symbols}")
         except Exception as e:
             print(f"Error connecting to Twelvedata websocket: {e}")
             self.connected = False
-            return False
-    
-    def keep_alive(self):
-        """Start the websocket connection and keep it alive in a background thread"""
-        if self.connected and self.ws:
-            import threading
-            thread = threading.Thread(target=self._keep_alive_thread)
-            thread.daemon = True
-            thread.start()
-            return True
-        return False
-    
-    def _keep_alive_thread(self):
-        """Thread function to keep the websocket alive"""
-        try:
-            print("Starting Twelvedata websocket keep_alive thread")
-            self.ws.keep_alive()
-        except Exception as e:
-            print(f"Error in Twelvedata websocket keep_alive thread: {e}")
-            self.connected = False
+            
+            # Retry connection after delay
+            time.sleep(5)
+            if self.error_count < self.max_retries:
+                self.error_count += 1
+                self.connect()
 
 # Initialize Twelvedata if API key is available
 if twelvedata_enabled:
