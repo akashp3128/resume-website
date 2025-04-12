@@ -984,6 +984,54 @@
       border: 1px solid #eee;
       cursor: pointer;
     }
+
+    .navy-images {
+      display: flex;
+      justify-content: space-between;
+      gap: 15px;
+      margin-top: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .navy-image-container {
+      flex: 1;
+      max-width: 32%;
+      text-align: center;
+    }
+    
+    .navy-image {
+      width: 100%;
+      height: auto;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease;
+      cursor: pointer;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+    }
+    
+    .navy-image:hover {
+      transform: scale(1.02);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    
+    .navy-image-caption {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      color: #666;
+      font-style: italic;
+    }
+    
+    @media (max-width: 768px) {
+      .navy-images {
+        flex-direction: column;
+      }
+      
+      .navy-image-container {
+        max-width: 100%;
+        margin-bottom: 15px;
+      }
+    }
   </style>
   
   <!-- Admin Login Modal -->
@@ -1165,15 +1213,71 @@
               <button class="edit-button">Edit</button>
             </div>
             
-            <h3>Evaluations</h3>
-            <ul class="document-list">
-              <li>No evaluations uploaded yet</li>
-            </ul>
-            <div class="upload-section">
-              <p>Upload evaluation documents (Max: 20MB, PDF, JPEG, or PNG)</p>
-              <input type="file" accept="application/pdf,image/jpeg,image/jpg,image/png" id="eval-upload">
-              <button class="upload-btn">Upload</button>
+            <h3>Navy Service Images</h3>
+            <div class="navy-images">
+              <div class="navy-image-container">
+                <iframe src="images/navy/image1.html" class="navy-image" scrolling="no" frameborder="0"></iframe>
+                <p class="navy-image-caption">USS Frank Cable Operations</p>
+              </div>
+              <div class="navy-image-container">
+                <iframe src="images/navy/image2.html" class="navy-image" scrolling="no" frameborder="0"></iframe>
+                <p class="navy-image-caption">NDT Inspection Training</p>
+              </div>
+              <div class="navy-image-container">
+                <iframe src="images/navy/image3.html" class="navy-image" scrolling="no" frameborder="0"></iframe>
+                <p class="navy-image-caption">Puget Sound Naval Shipyard</p>
+              </div>
             </div>
+            
+            <style>
+              .navy-images {
+                display: flex;
+                justify-content: space-between;
+                gap: 15px;
+                margin-top: 20px;
+                margin-bottom: 20px;
+              }
+              
+              .navy-image-container {
+                flex: 1;
+                max-width: 32%;
+                text-align: center;
+              }
+              
+              .navy-image {
+                width: 100%;
+                height: auto;
+                border-radius: 4px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                transition: transform 0.3s ease;
+                cursor: pointer;
+                aspect-ratio: 4/3;
+                object-fit: cover;
+              }
+              
+              .navy-image:hover {
+                transform: scale(1.02);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+              }
+              
+              .navy-image-caption {
+                margin-top: 8px;
+                font-size: 0.9rem;
+                color: #666;
+                font-style: italic;
+              }
+              
+              @media (max-width: 768px) {
+                .navy-images {
+                  flex-direction: column;
+                }
+                
+                .navy-image-container {
+                  max-width: 100%;
+                  margin-bottom: 15px;
+                }
+              }
+            </style>
           </div>
         </section>
         
@@ -1374,7 +1478,6 @@
     // File size limits (matching server configuration)
     const MAX_SIZES = {
       resume: 10 * 1024 * 1024,  // 10MB
-      eval: 20 * 1024 * 1024,    // 20MB
       photo: 10 * 1024 * 1024    // 10MB
     };
     
@@ -1449,9 +1552,7 @@
         
         // Determine file type based on section and input id
         const inputId = input.id;
-        if (inputId === 'eval-upload') {
-          fileType = 'eval';
-        } else if (inputId === 'resume-upload') {
+        if (inputId === 'resume-upload') {
           fileType = 'resume';
         } else if (inputId === 'photo-upload') {
           fileType = 'photo';
@@ -1526,52 +1627,6 @@
                 // Display the PDF with a fallback to download option
                 displayResume(result.url, file.name);
                 alert('Resume uploaded successfully!');
-              } else if (fileType === 'eval') {
-                // For evaluations (which have a list)
-                const listElement = this.closest('.card').querySelector('ul');
-                if (listElement.innerHTML.includes('No evaluations uploaded yet')) {
-                  listElement.innerHTML = '';
-                }
-                
-                const li = document.createElement('li');
-                
-                // Check if it's an image or PDF
-                const isImage = file.name.toLowerCase().endsWith('.jpg') || 
-                                file.name.toLowerCase().endsWith('.jpeg') || 
-                                file.name.toLowerCase().endsWith('.png');
-                
-                if (isImage) {
-                  // Create thumbnail for images
-                  const thumbnail = document.createElement('img');
-                  thumbnail.src = result.url;
-                  thumbnail.alt = file.name;
-                  thumbnail.className = 'thumbnail';
-                  thumbnail.onclick = function() {
-                    openLightbox(result.url);
-                  };
-                  li.appendChild(thumbnail);
-                }
-                
-                const a = document.createElement('a');
-                a.href = result.url;
-                a.target = '_blank';
-                a.textContent = file.name;
-                li.appendChild(a);
-                
-                listElement.appendChild(li);
-                
-                // Save eval to localStorage
-                const savedEvals = JSON.parse(localStorage.getItem('uploaded-evals') || '[]');
-                savedEvals.push({
-                  url: result.url,
-                  name: file.name
-                });
-                localStorage.setItem('uploaded-evals', JSON.stringify(savedEvals));
-                
-                // Show appropriate success message based on file type
-                if (fileType === 'resume' || fileType === 'eval') {
-                  alert('Document uploaded successfully!');
-                }
               }
             } else {
               const errorData = await response.json();
@@ -1714,18 +1769,42 @@
       // Create the preview container
       const previewContainer = document.createElement('div');
       previewContainer.className = 'resume-preview-container';
+      previewContainer.style.marginBottom = '1rem';
       
       // Create actions bar with download link
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'resume-actions';
+      actionsDiv.style.display = 'flex';
+      actionsDiv.style.justifyContent = 'space-between';
+      actionsDiv.style.alignItems = 'center';
+      actionsDiv.style.marginBottom = '0.75rem';
+      actionsDiv.style.padding = '0.5rem';
+      actionsDiv.style.backgroundColor = '#f5f5f5';
+      actionsDiv.style.borderRadius = '4px';
       
       // Create download link
       const downloadLink = document.createElement('a');
       downloadLink.href = resumeUrl;
       downloadLink.className = 'resume-download-link';
       downloadLink.textContent = 'Download Resume';
+      downloadLink.download = filename; // Enable direct download
       downloadLink.target = '_blank';
       downloadLink.setAttribute('rel', 'noopener');
+      downloadLink.style.color = '#8b0000';
+      downloadLink.style.fontWeight = 'bold';
+      downloadLink.style.textDecoration = 'none';
+      downloadLink.style.padding = '0.4rem 0.8rem';
+      downloadLink.style.border = '1px solid #8b0000';
+      downloadLink.style.borderRadius = '4px';
+      downloadLink.style.transition = 'background-color 0.3s';
+      downloadLink.addEventListener('mouseover', function() {
+        this.style.backgroundColor = '#8b0000';
+        this.style.color = 'white';
+      });
+      downloadLink.addEventListener('mouseout', function() {
+        this.style.backgroundColor = 'transparent';
+        this.style.color = '#8b0000';
+      });
       actionsDiv.appendChild(downloadLink);
       
       // Add filename display
@@ -1733,13 +1812,29 @@
       filenameSpan.textContent = filename;
       filenameSpan.style.color = '#666';
       filenameSpan.style.fontSize = '0.9rem';
+      filenameSpan.style.marginLeft = '1rem';
       actionsDiv.appendChild(filenameSpan);
       
       previewContainer.appendChild(actionsDiv);
       
+      // Status message for loading
+      const statusMsg = document.createElement('div');
+      statusMsg.style.padding = '1rem';
+      statusMsg.style.backgroundColor = '#f8f9fa';
+      statusMsg.style.borderRadius = '4px';
+      statusMsg.style.marginBottom = '1rem';
+      statusMsg.style.textAlign = 'center';
+      statusMsg.innerHTML = '<p>Loading resume preview...</p>';
+      previewContainer.appendChild(statusMsg);
+      
       // Create PDF viewer with error handling
       const pdfViewer = document.createElement('iframe');
       pdfViewer.className = 'pdf-viewer';
+      pdfViewer.style.width = '100%';
+      pdfViewer.style.height = '500px';
+      pdfViewer.style.border = '1px solid #ddd';
+      pdfViewer.style.borderRadius = '4px';
+      pdfViewer.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)';
       
       // Add sandbox attribute with necessary permissions for PDF viewing
       pdfViewer.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms');
@@ -1747,25 +1842,12 @@
       // Add load and error event handlers
       pdfViewer.addEventListener('load', function() {
         console.log('PDF loaded successfully');
+        statusMsg.style.display = 'none';
       });
       
       pdfViewer.addEventListener('error', function(e) {
         console.error('PDF loading error:', e);
-        pdfViewer.style.display = 'none';
-        
-        // Add error message
-        const errorMsg = document.createElement('div');
-        errorMsg.style.padding = '1rem';
-        errorMsg.style.border = '1px solid #ff6b6b';
-        errorMsg.style.borderRadius = '4px';
-        errorMsg.style.marginTop = '1rem';
-        errorMsg.style.backgroundColor = '#fff9f9';
-        errorMsg.style.color = '#d63031';
-        errorMsg.innerHTML = `
-          <p style="margin: 0; padding: 0 0 0.5rem 0;"><strong>Unable to display the PDF.</strong></p>
-          <p style="margin: 0; padding: 0;">You can still <a href="${resumeUrl}" target="_blank" style="color: #d63031; text-decoration: underline;">download the file</a> directly.</p>
-        `;
-        previewContainer.appendChild(errorMsg);
+        handlePdfError(previewContainer, statusMsg, resumeUrl);
       });
       
       // Fix for PDF display issues - make sure the URL is correctly formatted for iframes
@@ -1776,16 +1858,32 @@
         iframeSrc = iframeSrc.replace('https://', 'http://');
       }
       
-      // Add object fallback for browsers with iframe PDF issues
+      // Create object fallback for browsers with iframe PDF issues
       const objectFallback = document.createElement('object');
       objectFallback.data = iframeSrc;
       objectFallback.type = 'application/pdf';
       objectFallback.width = '100%';
-      objectFallback.height = '100%';
+      objectFallback.height = '500px';
+      objectFallback.style.display = 'none'; // Hidden initially
       objectFallback.innerHTML = `
         <p>It appears your browser doesn't support embedded PDFs. 
         <a href="${iframeSrc}" target="_blank">Click here to download the PDF</a>.</p>
       `;
+      
+      // Google Drive PDF Viewer fallback (if it's a publicly accessible URL)
+      const googleViewerLink = document.createElement('a');
+      googleViewerLink.href = `https://docs.google.com/viewer?url=${encodeURIComponent(iframeSrc)}&embedded=true`;
+      googleViewerLink.target = '_blank';
+      googleViewerLink.style.display = 'block';
+      googleViewerLink.style.marginTop = '1rem';
+      googleViewerLink.style.textAlign = 'center';
+      googleViewerLink.style.padding = '0.5rem';
+      googleViewerLink.style.backgroundColor = '#f8f9fa';
+      googleViewerLink.style.borderRadius = '4px';
+      googleViewerLink.style.textDecoration = 'none';
+      googleViewerLink.style.color = '#333';
+      googleViewerLink.innerHTML = 'Open in Google PDF Viewer';
+      googleViewerLink.style.display = 'none'; // Hidden initially
       
       // Set the source last to make sure handlers are in place
       pdfViewer.src = iframeSrc;
@@ -1797,10 +1895,11 @@
       const viewerWrapper = document.createElement('div');
       viewerWrapper.className = 'pdf-viewer-wrapper';
       viewerWrapper.style.width = '100%';
-      viewerWrapper.style.height = '600px';
       viewerWrapper.appendChild(pdfViewer);
+      viewerWrapper.appendChild(objectFallback);
       
       previewContainer.appendChild(viewerWrapper);
+      previewContainer.appendChild(googleViewerLink);
       
       // Clear container and add new elements
       container.innerHTML = '';
@@ -1810,10 +1909,50 @@
       setTimeout(() => {
         if (!pdfViewer.contentDocument || pdfViewer.contentDocument.body.innerHTML === '') {
           console.log('PDF iframe may be blocked, trying object fallback');
-          viewerWrapper.innerHTML = '';
-          viewerWrapper.appendChild(objectFallback);
+          pdfViewer.style.display = 'none';
+          objectFallback.style.display = 'block';
+          googleViewerLink.style.display = 'block';
+          
+          // Check if object fallback also failed after a short delay
+          setTimeout(() => {
+            const objectContent = objectFallback.querySelector('embed, iframe');
+            if (!objectContent || !objectContent.offsetParent) {
+              handlePdfError(previewContainer, statusMsg, resumeUrl);
+            }
+          }, 1000);
         }
-      }, 1000);
+      }, 1500);
+    }
+    
+    // Function to handle PDF errors
+    function handlePdfError(container, statusMsgElement, resumeUrl) {
+      // Update status message
+      statusMsgElement.style.display = 'block';
+      statusMsgElement.style.border = '1px solid #ff6b6b';
+      statusMsgElement.style.backgroundColor = '#fff9f9';
+      statusMsgElement.style.color = '#d63031';
+      statusMsgElement.innerHTML = `
+        <p style="margin: 0; padding: 0 0 0.5rem 0;"><strong>Unable to display the PDF preview.</strong></p>
+        <p style="margin: 0; padding: 0;">Your resume was uploaded successfully and can be accessed using the download button above.</p>
+      `;
+      
+      // Show a direct link as additional fallback
+      const directLinkContainer = document.createElement('div');
+      directLinkContainer.style.marginTop = '1rem';
+      directLinkContainer.style.padding = '0.75rem';
+      directLinkContainer.style.backgroundColor = '#f8f9fa';
+      directLinkContainer.style.borderRadius = '4px';
+      directLinkContainer.style.textAlign = 'center';
+      
+      const directLink = document.createElement('a');
+      directLink.href = resumeUrl;
+      directLink.target = '_blank';
+      directLink.textContent = 'Open Resume in New Tab';
+      directLink.style.color = '#0066cc';
+      directLink.style.textDecoration = 'underline';
+      
+      directLinkContainer.appendChild(directLink);
+      container.appendChild(directLinkContainer);
     }
     
     // Load previously uploaded files from localStorage
@@ -1834,42 +1973,6 @@
       const resumeFilename = localStorage.getItem('uploaded-resume-filename');
       if (resumeUrl && resumeFilename) {
         displayResume(resumeUrl, resumeFilename);
-      }
-      
-      // Load evaluations if exist
-      const savedEvals = JSON.parse(localStorage.getItem('uploaded-evals') || '[]');
-      if (savedEvals.length > 0) {
-        const listElement = document.querySelector('#navy .document-list');
-        listElement.innerHTML = '';
-        
-        savedEvals.forEach(eval => {
-          const li = document.createElement('li');
-          
-          // Check if it's an image or PDF
-          const isImage = eval.url.toLowerCase().endsWith('.jpg') || 
-                          eval.url.toLowerCase().endsWith('.jpeg') || 
-                          eval.url.toLowerCase().endsWith('.png');
-          
-          if (isImage) {
-            // Create thumbnail for images
-            const thumbnail = document.createElement('img');
-            thumbnail.src = eval.url;
-            thumbnail.alt = eval.name;
-            thumbnail.className = 'thumbnail';
-            thumbnail.onclick = function() {
-              openLightbox(eval.url);
-            };
-            li.appendChild(thumbnail);
-          }
-          
-          const a = document.createElement('a');
-          a.href = eval.url;
-          a.target = '_blank';
-          a.textContent = eval.name;
-          li.appendChild(a);
-          
-          listElement.appendChild(li);
-        });
       }
     }
     
