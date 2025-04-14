@@ -16,8 +16,8 @@ const isLocalHost = typeof window !== 'undefined' &&
                    (window.location.hostname === 'localhost' || 
                     window.location.hostname === '127.0.0.1');
 
-// Use localhost direct connection in development, but use the proxied API path in production
-const BACKEND_URL = isLocalHost ? 'http://localhost:3000' : API_PATH;
+// Use our API proxy server instead of direct connection to backend
+const BACKEND_URL = isLocalHost ? 'http://localhost:8002' : API_PATH;
 
 // Track API state
 let usingFallbackMode = false;
@@ -97,8 +97,8 @@ async function fetchYFinanceData(tickerElement) {
     console.log(`Attempting to fetch data from YFinance backend at ${BACKEND_URL}...`);
     
     // Determine the correct health endpoint path
-    const healthEndpoint = isLocalHost ? `${BACKEND_URL}/health` : `${BACKEND_URL}/health`;
-    const quotesEndpoint = isLocalHost ? `${BACKEND_URL}/api/quotes` : `${BACKEND_URL}/quotes`;
+    const healthEndpoint = `${BACKEND_URL}/health`;
+    const quotesEndpoint = `${BACKEND_URL}/api/quotes`;
     
     console.log(`Health check endpoint: ${healthEndpoint}`);
     
