@@ -16,8 +16,8 @@ const isLocalHost = typeof window !== 'undefined' &&
                    (window.location.hostname === 'localhost' || 
                     window.location.hostname === '127.0.0.1');
 
-// Use our API proxy server instead of direct connection to backend
-const BACKEND_URL = isLocalHost ? 'http://localhost:8002' : API_PATH;
+// Use our API proxy server with full URL instead of relative path
+const BACKEND_URL = isLocalHost ? 'http://localhost:8002' : 'https://akashpatelresume.us/api-proxy';
 
 // Track API state
 let usingFallbackMode = false;
@@ -94,13 +94,14 @@ function getStaticStockData() {
  */
 async function fetchYFinanceData(tickerElement) {
   try {
-    console.log(`Attempting to fetch data from YFinance backend at ${BACKEND_URL}...`);
+    console.log(`Attempting to fetch data from backend at ${BACKEND_URL}...`);
     
-    // Determine the correct health endpoint path
+    // Always use full URLs with the proxy server
     const healthEndpoint = `${BACKEND_URL}/health`;
     const quotesEndpoint = `${BACKEND_URL}/api/quotes`;
     
     console.log(`Health check endpoint: ${healthEndpoint}`);
+    console.log(`Quotes endpoint: ${quotesEndpoint}`);
     
     // First check if backend is available with a health check
     const healthResponse = await Promise.race([
