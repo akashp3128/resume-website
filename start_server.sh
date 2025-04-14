@@ -28,12 +28,47 @@ function stop_servers() {
   done
 }
 
+# Check if we're in a virtual environment
+if [ -n "$VIRTUAL_ENV" ]; then
+  echo -e "${GREEN}Virtual environment detected: $VIRTUAL_ENV${NC}"
+else
+  echo -e "${YELLOW}No virtual environment detected. This script may not work correctly.${NC}"
+  echo -e "${YELLOW}We strongly recommend creating and activating a Python virtual environment:${NC}"
+  echo -e "${YELLOW}  python3 -m venv venv${NC}"
+  echo -e "${YELLOW}  source venv/bin/activate${NC}"
+  echo -e "${YELLOW}Do you want to continue anyway? (y/n)${NC}"
+  read response
+  if [ "$response" != "y" ]; then
+    exit 1
+  fi
+fi
+
+# Check for required Python packages
+python3 -c "import pymongo; import requests" 2>/dev/null
+if [ $? -ne 0 ]; then
+  echo -e "${YELLOW}Required packages not found. Installing...${NC}"
+  if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt
+  else
+    pip install pymongo requests
+  fi
+  
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}Failed to install required packages. Please install them manually:${NC}"
+    echo -e "${YELLOW}  pip install pymongo requests${NC}"
+    exit 1
+  fi
+fi
+
 # Stop any existing servers
 stop_servers 8000 8001 3000
 
 # Make sure scripts are executable
 chmod +x upload-handler/upload_server.py
-chmod +x stock-data-server.py
+chmod +x stock-data-server-mongodb.py
+
+# Remove any existing PID file
+rm -f crypto_server_running.pid
 
 # Start upload server
 echo -e "${GREEN}Starting upload server on port 8001...${NC}"
@@ -52,17 +87,25 @@ else
   exit 1
 fi
 
-# Start YFinance backend for stock ticker
-echo -e "${GREEN}Starting YFinance backend for stock ticker on port 3000...${NC}"
-./stock-data-server.py &
-YFINANCE_PID=$!
+# Start CoinGecko/MongoDB backend for crypto ticker
+echo -e "${GREEN}Starting CoinGecko/MongoDB backend on port 3000...${NC}"
+./stock-data-server-mongodb.py &
+CRYPTO_PID=$!
 
-# Wait for YFinance backend to start
-sleep 2
-if is_port_in_use 3000; then
-  echo -e "${GREEN}YFinance backend started successfully.${NC}"
+# Wait for crypto server to start - use a more robust method with increased timeout
+MAX_WAIT=15
+WAIT_COUNT=0
+while [ ! -f "crypto_server_running.pid" ] && [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+  echo -e "${YELLOW}Waiting for crypto server to initialize... ($WAIT_COUNT/${MAX_WAIT})${NC}"
+  sleep 1
+  WAIT_COUNT=$((WAIT_COUNT+1))
+done
+
+if [ -f "crypto_server_running.pid" ] && is_port_in_use 3000; then
+  echo -e "${GREEN}CoinGecko/MongoDB backend started successfully.${NC}"
 else
-  echo -e "${YELLOW}Warning: YFinance backend failed to start. Stock ticker will use fallback data.${NC}"
+  echo -e "${YELLOW}Warning: CoinGecko backend initialization is taking longer than expected.${NC}"
+  echo -e "${YELLOW}The service might still be starting in the background. Check logs for progress.${NC}"
   echo -e "${YELLOW}This is not critical - the website will still function.${NC}"
 fi
 
@@ -86,12 +129,12 @@ echo -e "\n${GREEN}=======================================================${NC}"
 echo -e "${GREEN}All servers started successfully!${NC}"
 echo -e "${GREEN}Main website:${NC} http://localhost:8000"
 echo -e "${GREEN}Upload server:${NC} http://localhost:8001"
-echo -e "${GREEN}YFinance backend:${NC} http://localhost:3000"
+echo -e "${GREEN}CoinGecko/MongoDB backend:${NC} http://localhost:3000"
 echo -e "${GREEN}=======================================================${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop all servers.${NC}\n"
 
 # Handle termination
-trap "echo -e '${YELLOW}Shutting down servers...${NC}'; stop_servers 8000 8001 3000; exit 0" INT TERM
+trap "echo -e '${YELLOW}Shutting down servers...${NC}'; stop_servers 8000 8001 3000; rm -f crypto_server_running.pid; exit 0" INT TERM
 
 # Keep script running
 wait 
