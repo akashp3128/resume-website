@@ -17,7 +17,9 @@ const isLocalHost = typeof window !== 'undefined' &&
                     window.location.hostname === '127.0.0.1');
 
 // Use our API proxy server with full URL instead of relative path
-const BACKEND_URL = isLocalHost ? 'http://localhost:8002' : 'https://akashpatelresume.us/api-proxy';
+// Add cache-busting timestamp to prevent browser caching
+const timestamp = new Date().getTime();
+const BACKEND_URL = isLocalHost ? `http://localhost:8002?t=${timestamp}` : `https://akashpatelresume.us/api-proxy?t=${timestamp}`;
 
 // Track API state
 let usingFallbackMode = false;
@@ -96,7 +98,7 @@ async function fetchYFinanceData(tickerElement) {
   try {
     console.log(`Attempting to fetch data from backend at ${BACKEND_URL}...`);
     
-    // Always use full URLs with the proxy server
+    // Always use full URLs with the proxy server and cache busting
     const healthEndpoint = `${BACKEND_URL}/health`;
     const quotesEndpoint = `${BACKEND_URL}/api/ticker`;
     
@@ -130,26 +132,44 @@ async function fetchYFinanceData(tickerElement) {
     const data = await response.json();
     
     if (Array.isArray(data) && data.length > 0) {
-      console.log(`Successfully fetched market data from YFinance backend`);
+      console.log(`Successfully fetched market data from backend`);
+      console.log('Raw data sample:', data[0]);
       
-      // Process data to match our format
+      // Process data to match our format, handling CoinGecko's specific format
       const processedData = data.map(item => {
         // Convert "BTC" to "BTC-USD" format if needed
         const symbol = item.symbol === 'BTC' ? 'BTC-USD' : 
                        item.symbol === 'XRP' ? 'XRP-USD' : 
                        item.symbol === 'ETH' ? 'ETH-USD' : 
-                       item.symbol === 'DOGE' ? 'DOGE-USD' : item.symbol;
+                       item.symbol === 'DOGE' ? 'DOGE-USD' : 
+                       item.symbol === 'SOL' ? 'SOL-USD' : item.symbol;
+        
+        // Handle change format - CoinGecko provides change_percent but may not provide change (absolute value)
+        let changeValue = item.change;
+        if (changeValue === undefined && item.price_usd !== undefined && item.change_percent !== undefined) {
+          // Calculate absolute change from percentage and price
+          const percentAsDecimal = item.change_percent / 100;
+          changeValue = (item.price_usd * percentAsDecimal).toFixed(2);
+          if (percentAsDecimal >= 0) changeValue = '+' + changeValue;
+        }
+        
+        // Handle different formats from CoinGecko vs YFinance
+        const price = item.price_usd || item.price;
+        const changePercent = item.change_percent ? 
+                            (item.change_percent >= 0 ? '+' : '') + item.change_percent.toFixed(2) + '%' : 
+                            item.changePercent;
         
         return {
           symbol: symbol,
-          price: item.price,
-          change: item.change,
-          changePercent: item.changePercent
+          price: price,
+          change: changeValue,
+          changePercent: changePercent
         };
       });
       
-      // Add a data source indicator to the console (but don't affect the ticker itself)
+      // Log the first processed item for debugging
       console.info(`Stock ticker using live data from backend`);
+      console.log('Processed data sample:', processedData[0]);
       
       // Render the data
       renderTicker(tickerElement, processedData);
@@ -158,12 +178,12 @@ async function fetchYFinanceData(tickerElement) {
       apiFailureCount = 0;
       usingFallbackMode = false;
     } else {
-      console.warn("YFinance backend returned no data");
+      console.warn("Backend returned no data");
       apiFailureCount++;
       checkFailureStatus(tickerElement);
     }
   } catch (error) {
-    console.error(`Error fetching from YFinance backend:`, error);
+    console.error(`Error fetching from backend:`, error);
     apiFailureCount++;
     checkFailureStatus(tickerElement);
   }
