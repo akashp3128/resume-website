@@ -98,7 +98,7 @@ async function fetchYFinanceData(tickerElement) {
     
     // Always use full URLs with the proxy server
     const healthEndpoint = `${BACKEND_URL}/health`;
-    const quotesEndpoint = `${BACKEND_URL}/api/quotes`;
+    const quotesEndpoint = `${BACKEND_URL}/api/ticker`;
     
     console.log(`Health check endpoint: ${healthEndpoint}`);
     console.log(`Quotes endpoint: ${quotesEndpoint}`);
