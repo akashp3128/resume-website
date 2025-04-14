@@ -345,6 +345,13 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
             response = self._get_stock_ticker_data()
             self._json_response(response)
             return
+            
+        # Compatibility endpoint for isolated-stock-ticker.js
+        if path == '/api/quotes':
+            # Return data in the format expected by isolated-stock-ticker.js
+            response = self._get_quotes_data_for_ticker()
+            self._json_response(response)
+            return
         
         # Default response for unknown endpoints
         self._json_response({'error': 'Not found'}, 404)
@@ -456,6 +463,48 @@ class StockDataHandler(http.server.BaseHTTPRequestHandler):
                 "change_percent": item.get("change_percent_24h", 0),
                 "price": item["price"],
                 "source": "coingecko"
+            }
+            formatted_data.append(formatted_item)
+            
+        return formatted_data
+
+    def _get_quotes_data_for_ticker(self):
+        """Format data specifically for isolated-stock-ticker.js expectations"""
+        data = self._get_crypto_data()
+        
+        # Map of crypto symbols to match stock ticker expectations
+        crypto_to_stock_map = {
+            'BTC': 'BTC-USD',
+            'ETH': 'ETH-USD',
+            'XRP': 'XRP-USD',
+            'DOGE': 'DOGE-USD',
+            'SOL': 'SOL-USD'
+        }
+        
+        # Format data in the structure expected by isolated-stock-ticker.js
+        formatted_data = []
+        for item in data:
+            symbol = item.get("symbol", "")
+            price = item.get("price", 0)
+            change_percent = item.get("change_percent_24h", 0)
+            
+            # Calculate absolute change based on percentage
+            change_amount = price * (change_percent / 100)
+            
+            # Format the change percent as a string with + or - and % sign
+            change_percent_str = f"{'+' if change_percent >= 0 else ''}{change_percent:.2f}%"
+            
+            # Format the change amount as a string with + or - sign
+            change_str = f"{'+' if change_amount >= 0 else ''}{change_amount:.2f}"
+            
+            # Map the symbol if needed
+            display_symbol = crypto_to_stock_map.get(symbol, symbol)
+            
+            formatted_item = {
+                "symbol": display_symbol,
+                "price": str(price),
+                "change": change_str,
+                "changePercent": change_percent_str
             }
             formatted_data.append(formatted_item)
             
